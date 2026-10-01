@@ -346,6 +346,15 @@ def _intervals(poly: np.ndarray, h: float) -> list[tuple[float, float]]:
     return [(float(ts[k]), float(ts[k + 1])) for k in range(0, len(ts) - 1, 2)]
 
 
+RING_CHAMFER = 0.3  # a ring this close around a circle (share of its diameter, or 4 line widths) is a chamfer
+
+
+def chamfer_ring(c, stroke_px: float) -> bool:
+    """The circle's concentric ring is a chamfer's edge (a pin's tip), not a hub around a bore: it lies within
+    RING_CHAMFER of the diameter, or within four line widths."""
+    return bool(c.ring) and c.ring - c.d <= max(RING_CHAMFER * c.d, 4 * stroke_px)
+
+
 def _verdict(o: Observation, i: int, others: list[Observation], env: S.Envelope) -> tuple[str, str | None]:
     """("hole" | "edge", the view that decided it, or None when no view explains the circle)."""
     c = o.outline.circles[i]
@@ -353,11 +362,11 @@ def _verdict(o: Observation, i: int, others: list[Observation], env: S.Envelope)
     a_axis, b_axis, look = S.FACE_AXES[o.face]
     (a, b), = to_face_mm(np.array([[c.cx, c.cy]]), o.outline.bbox, sa, sb)
     at = S.to_global(o.face, a, b, env)
-    pairs = []  # (view, the axis it shares with o, the circle's diameter along that axis, and its ring's)
+    pairs = []  # (view, the axis it shares with o, the circle's diameter along that axis, and its chamfer ring's)
     for g in others:
         s = next(ax for ax in (a_axis, b_axis) if ax in S.FACE_AXES[g.face][:2])
         scale = sa if s == a_axis else sb
-        pairs.append((g, s, c.d * scale, c.ring * scale))
+        pairs.append((g, s, c.d * scale, c.ring * scale if chamfer_ring(c, o.stroke) else 0.0))
     for g, s, d, _ in pairs:
         tol = HIDDEN_TOL * env.length(s)
         qs = _hidden_along(g, s, look, env)
@@ -544,7 +553,8 @@ def snap(data: dict, clearance: str = "medium", kinds: dict | None = None) -> No
             path = f"features[{k}].{name}"
             if f.get(name) is None or prov.get(path) not in SNAPPABLE:
                 continue
-            new = snap_diameter(f[name], clearance) if name == "diameter_mm" else _grid(f[name])
+            hole = name == "diameter_mm" and f.get("type", "hole") == "hole"  # clearance sizes are for holes
+            new = snap_diameter(f[name], clearance) if hole else _grid(f[name])
             if new > 0 and abs(new - f[name]) > 1e-9:
                 f[name] = new
                 snapped.append(path)
@@ -568,6 +578,21 @@ def snap(data: dict, clearance: str = "medium", kinds: dict | None = None) -> No
             snapped.append(path)
 
 
+def _drop_features(data: dict, removed: set[int]) -> None:
+    """Take features out of a spec dict and renumber their provenance paths."""
+    keep = [k for k in range(len(data["features"])) if k not in removed]
+    new_index = {old: new for new, old in enumerate(keep)}
+    data["features"] = [data["features"][k] for k in keep]
+    prov = {}
+    for path, p in data["provenance"].items():
+        m = _FEATURE_PATH.fullmatch(path)
+        if not m:
+            prov[path] = p
+        elif int(m.group(1)) in new_index:
+            prov[f"features[{new_index[int(m.group(1))]}].{m.group(2)}"] = p
+    data["provenance"] = prov
+
+
 def assemble(env: S.Envelope, env_prov: dict, outlines: dict, feats: list[dict], feat_prov: dict,
              warnings: list[str], user_values: dict | None = None, accepted=(), snap_values: bool = True,
              clearance: str = "medium", kinds: dict | None = None) -> S.MultiViewSpec:
@@ -584,11 +609,18 @@ def assemble(env: S.Envelope, env_prov: dict, outlines: dict, feats: list[dict],
     for face in accepted:
         if f"views.{face}.outer" in data["provenance"]:
             data["provenance"][f"views.{face}.outer"] = "user_edited"
+    removed = set()
     for path, value in (user_values or {}).items():
         m = _FEATURE_PATH.fullmatch(path)
         if m and int(m.group(1)) < len(data["features"]):
+            if m.group(2) == "keep":  # the user took a misread feature out: "features[k].keep" = 0
+                if not value:
+                    removed.add(int(m.group(1)))
+                continue
             data["features"][int(m.group(1))][m.group(2)] = float(value)
             data["provenance"][path] = "user_edited"
+    if removed:
+        _drop_features(data, removed)
     if snap_values:
         snap(data, clearance, kinds)
     return S.MultiViewSpec.model_validate(data)

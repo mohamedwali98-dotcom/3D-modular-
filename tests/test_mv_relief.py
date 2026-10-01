@@ -178,5 +178,5 @@ def test_carving_never_splits_the_part():
     obs_h = np.array([[True, True], [False, False], [True, True]])  # the middle column has no top or bottom
     ev = _Evidence("front", obs_v, obs_h, np.zeros_like(obs_v), np.zeros_like(obs_h),
                    np.ones(obs_v.shape), np.ones(obs_h.shape))
-    carved, _, _ = carve(occ, [ev])
+    carved = carve(occ, [ev])[0]
     assert carved[0].any() and carved[1].any() and carved[2].any()

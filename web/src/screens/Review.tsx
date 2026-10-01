@@ -49,6 +49,8 @@ interface LedgerGroup {
   /** "M5" when the snapped size is exactly a standard clearance hole, otherwise "standard size". */
   snapLabel: string;
   fields: { path: string; label: string; aria: string; value: number }[];
+  index: number;        // the feature's index in spec.features
+  removable: boolean;   // a pocket or a pin read from a drawing's lines: the user can take it out
 }
 
 /** Groups `featureRows` by their check-group (size/position/angle/depth) in first-seen order. */
@@ -70,6 +72,7 @@ function groupFeatures(spec: Spec, typed: Record<string, number>): LedgerGroup[]
       group, name: rs[0].groupName, face: rs[0].face, feature: rs[0].feature, prov, snapped,
       snapLabel: snappedLabel(snappedRow && (typed[snappedRow.path] ?? snappedRow.value)),
       fields: rs.map((r) => ({ path: r.path, label: r.label, aria: `${r.groupName} ${r.label}`, value: typed[r.path] ?? r.value })),
+      index: rs[0].index, removable: /^(Pocket|Pin) /.test(rs[0].feature),
     };
   });
 }
@@ -392,14 +395,14 @@ export function Review() {
           <div style={{ borderRadius: 14, background: 'var(--surface)', boxShadow: 'var(--shadow)', padding: '16px 18px', flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 4, overflow: 'auto' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
               <span style={{ fontSize: 15, fontWeight: 600 }}>Every other number</span>
-              <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.08em', color: 'var(--muted)' }}>[ HOLES ]</span>
+              <span style={{ fontFamily: MONO, fontSize: 11, letterSpacing: '0.08em', color: 'var(--muted)' }}>[ FEATURES ]</span>
             </div>
             {abstain ? (
               <div style={{ flex: 1, display: 'grid', placeItems: 'center', textAlign: 'center', fontSize: 14, color: 'var(--muted)', border: '1.5px dashed var(--line)', borderRadius: 12, padding: 24 }}>
                 Holes and positions are listed once we have the {missingPhrase ?? 'missing value'}.
               </div>
             ) : groups.length === 0 ? (
-              <div style={{ flex: 1, display: 'grid', placeItems: 'center', textAlign: 'center', fontSize: 14, color: 'var(--muted)' }}>No holes or slots.</div>
+              <div style={{ flex: 1, display: 'grid', placeItems: 'center', textAlign: 'center', fontSize: 14, color: 'var(--muted)' }}>No holes, slots, pockets or pins.</div>
             ) : (
               groups.map((g) => {
                 const b = BADGE[g.prov];
@@ -425,6 +428,9 @@ export function Review() {
                     {isOpen && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, padding: '10px 12px', borderRadius: 9, border: '1px dashed var(--line)', fontSize: 13, lineHeight: 1.4 }}>
                         <span style={{ flex: 1, textWrap: 'pretty' } as CSSProperties}>{g.prov === 'user_edited' ? 'You checked or changed this value.' : EXPLAIN[g.prov]}</span>
+                        {g.removable && (
+                          <button type="button" onClick={() => dispatch({ type: 'TYPE_VALUE', path: `features[${g.index}].keep`, value: 0 })} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: `1.5px solid ${CHK}`, background: 'transparent', color: CHK, font: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>Remove {g.feature.toLowerCase()}</button>
+                        )}
                         {isCheck(g.prov) && (
                           <button type="button" onClick={() => confirmGroup(g)} style={{ height: 36, padding: '0 12px', borderRadius: 9, border: `1.5px solid ${TRU}`, background: 'transparent', color: TRU, font: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap' }}>✓ Looks right</button>
                         )}

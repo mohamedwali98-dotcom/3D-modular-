@@ -288,7 +288,8 @@ class MvPipeline:
             views = {f: ol for f, (ol, _) in with_prov.items()}
             pins, more = bosses(observed.observations, edges, views, env)
             pockets, notes = relief(observed.observations, views, env)
-            feat_prov.update(pocket_provenance(pins + pockets, len(feats)))
+            drawn = all(views[f].source in ("observed", "mirrored") for f in S.CANONICAL_FACES if f in views)
+            feat_prov.update(pocket_provenance(pins + pockets, len(feats), inferred=not drawn))
             feats += pins + pockets
             warnings += more + notes
         _emit(progress, key="fuse", state="running")

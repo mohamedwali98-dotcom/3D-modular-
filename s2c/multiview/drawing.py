@@ -31,6 +31,18 @@ DIM_STYLE = {"dimtxt": 3.5, "dimlfac": 1, "dimasz": 2.5, "dimexo": 1.5}  # the E
 RENDER = Configuration(background_policy=BackgroundPolicy.WHITE, color_policy=ColorPolicy.BLACK)
 
 
+
+def feature_note(f) -> str:
+    """A feature the views do not dimension, in words: "pocket 15 x 20, 20 deep, on the front face"."""
+    if f.type == "pocket":
+        depth = "through" if f.depth_mm is None else f"{f.depth_mm:g} deep"
+        return f"pocket {f.width_mm:g} x {f.height_mm:g}, {depth}, on the {f.face} face"
+    if f.type == "boss":
+        return f"pin Ø{f.diameter_mm:g}, {f.height_mm:g} high, on the {f.face} face"
+    if f.type == "slot":
+        return f"slot {f.length_mm:g} x {f.width_mm:g} on the {f.face} face"
+    return f"{f.type} on the {f.face} face"
+
 def _collect(*compounds) -> list[cq.Shape]:
     # HLR returns each part (VCompound, OutLineVCompound, ...) as a TopoDS_Shape whose direct children are free
     # Edges. DxfDocument.add_shape wraps a WorkplaneLike's stack items as the immediate children of a fresh
@@ -99,7 +111,7 @@ def drawing_document(solid, spec: MultiViewSpec) -> ezdxf.document.Drawing:
                                  override=DIM_STYLE, text=f"<> ({f.face})",  # ezdxf prepends its own diameter
                                  dxfattribs={"layer": "DIMENSIONS"}).render()   # sign to "<>"; don't add a second
         else:
-            notes.append(f"Feature {k + 1} on the {f.face} face")
+            notes.append(f"Feature {k + 1}: {feature_note(f)}")
     for finish in spec.finishes:
         if isinstance(finish, Fillet):
             notes.append(f"Fillet R{finish.radius_mm:g} on {EDGE_LABELS[finish.edges]}")

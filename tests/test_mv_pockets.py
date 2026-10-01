@@ -61,3 +61,12 @@ def test_a_pocket_that_would_split_the_part_is_skipped():
     spec = make_spec((40, 20, 30), features=[
         {"type": "pocket", "face": "front", "a_mm": 20, "b_mm": 10, "width_mm": 4, "height_mm": 30}])
     assert volume(build(spec)) == pytest.approx(40 * 20 * 30, rel=1e-4)
+
+
+def test_the_drawing_notes_name_pockets_and_pins():
+    from s2c.multiview.drawing import feature_note
+    spec = make_spec((40, 26, 30), features=[
+        {"type": "pocket", "face": "front", "a_mm": 4, "b_mm": 17, "width_mm": 8, "height_mm": 6, "depth_mm": 12},
+        {"type": "boss", "face": "top", "a_mm": 20, "b_mm": 15, "diameter_mm": 8, "height_mm": 6}])
+    assert feature_note(spec.features[0]) == "pocket 8 x 6, 12 deep, on the front face"
+    assert feature_note(spec.features[1]) == "pin Ø8, 6 high, on the top face"

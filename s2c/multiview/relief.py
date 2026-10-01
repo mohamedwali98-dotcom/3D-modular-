@@ -15,13 +15,17 @@ import numpy as np
 from scipy import ndimage
 
 from s2c.multiview import spec as S
+from s2c.multiview.fuse import chamfer_ring
 
 log = logging.getLogger(__name__)
 
 TOL = 0.015          # grid lines closer than this share of their axis are one line
 COVER = 0.5          # a drawn line covers a grid edge when it runs along at least this share of it
 HIDDEN_COST = 0.5    # a drawn hidden line the model has no edge for costs this share of a visible mismatch
-MIN_GAIN = 0.05      # carving must remove at least this share of the hull's mismatch to be kept
+MIN_GAIN = 0.05      # carving must remove at least this share of the hull's mismatch to be kept...
+MIN_GAIN_ABS = 0.3   # ...and this much of it outright (in view lengths): a line width's sliver is no evidence
+DASH_END = 0.05     # a dashed line may stop a dash and a gap short of the outline: its ends this close snap to it
+DEFAULT_DEPTH = 0.25  # share of its axis a pocket gets when no other view shows how deep it goes (a check)
 MAX_GRID = 48        # more grid lines than this on an axis: too busy to read, the hull stays
 MAX_STEPS = 40
 SQUARE = 0.85        # share of each outline's perimeter on axis-parallel edges; rounder parts keep the hull
@@ -45,6 +49,28 @@ class _View:
     visible: list[Seg]
     hidden: list[Seg]
     circles: list[tuple[float, float, float]] = ()  # (a, b, d) mm: a drawn circle explains the grid edges it covers
+    stroke: tuple[float, float] = (0.0, 0.0)          # the line width in mm along a and along b
+
+
+def _stroke_px(o) -> float:
+    """The drawing's line width in the outline's pixels: measured by the pipeline, else a typical share."""
+    _, _, w, h = o.outline.bbox
+    return float(o.stroke) if getattr(o, "stroke", 0) else 0.006 * max(w, h)
+
+
+def _view(o, env: S.Envelope) -> _View:
+    """A line-art observation in face-frame millimetres. A drawn edge sits half a line inside the outline's bbox:
+    lines within one line width of the bbox are the outline itself and snap onto it, so a thin part's two outline
+    edges never read as a step."""
+    _, _, w, h = o.outline.bbox
+    px = _stroke_px(o)
+    snap = (px / max(w, 1), px / max(h, 1))
+    a_len, b_len = S.face_size(o.face, env)
+    stroke = (px * a_len / max(w - 1, 1), px * b_len / max(h - 1, 1))
+    dashed = (max(snap[0], DASH_END), max(snap[1], DASH_END))
+    return _View(o.face, _to_mm(o.outline.lines, o.face, env, snap),
+                 _to_mm(o.outline.hidden, o.face, env, snap, ends=dashed),
+                 [_circle_mm(o, c, env) for c in o.outline.circles], stroke)
 
 
 def _circle_mm(o, c, env: S.Envelope) -> tuple[float, float, float]:
@@ -55,11 +81,19 @@ def _circle_mm(o, c, env: S.Envelope) -> tuple[float, float, float]:
     return float((c.cx - x) * sa), float((y + h - 1 - c.cy) * sb), float(c.d * (sa + sb) / 2)
 
 
-def _to_mm(lines, face: str, env: S.Envelope) -> list[Seg]:
-    """Bbox fractions in image orientation (outline.find_*_lines) -> face-frame millimetres, b up."""
+def _to_mm(lines, face: str, env: S.Envelope, snap: tuple[float, float] = (0.0, 0.0),
+           ends: tuple[float, float] | None = None) -> list[Seg]:
+    """Bbox fractions in image orientation (outline.find_*_lines) -> face-frame millimetres, b up. A line within
+    `snap` (bbox share across it: a for "v", b for "h") of the bbox's edge is put on the edge; its ends within
+    `ends` (along it; `snap` by default) of the edges are put on them."""
     a_len, b_len = S.face_size(face, env)
+    ends = ends or snap
     out = []
     for axis, pos, s, e in lines:
+        near, along = (snap[1], ends[0]) if axis == "h" else (snap[0], ends[1])
+        pos = 0.0 if pos <= near else 1.0 if pos >= 1 - near else pos
+        s = 0.0 if s <= along else s
+        e = 1.0 if e >= 1 - along else e
         if axis == "h":
             out.append(("h", (1 - pos) * b_len, s * a_len, e * a_len))
         else:
@@ -71,9 +105,10 @@ def _global(face: str, a: float, b: float, env: S.Envelope) -> dict[str, float]:
     return S.to_global(face, a, b, env)
 
 
-def _cluster(values: list[float], length: float) -> np.ndarray:
-    """Sorted grid coordinates: values within TOL of the axis merged to their mean, the ends kept exact."""
-    tol = TOL * length
+def _cluster(values: list[float], length: float, stroke: float = 0.0) -> np.ndarray:
+    """Sorted grid coordinates: values within TOL of the axis (a line width at least) merged to their mean, the
+    ends kept exact."""
+    tol = max(TOL * length, stroke)
     pts = sorted([0.0, length, *[min(max(v, 0.0), length) for v in values]])
     groups: list[list[float]] = [[pts[0]]]
     for v in pts[1:]:
@@ -99,7 +134,12 @@ def _grid(views: list[_View], outlines: dict[str, S.Outline], env: S.Envelope) -
             for a, b in pts:
                 for ax, v in _global(view.face, a, b, env).items():
                     values[ax].append(v)
-    return {axis: _cluster(values[axis], env.length(axis)) for axis in _AXES}
+    stroke = {a: 0.0 for a in _AXES}
+    for view in views:
+        a_axis, _, b_axis, _, _, _ = _FRAME[view.face]
+        stroke[a_axis] = max(stroke[a_axis], view.stroke[0])
+        stroke[b_axis] = max(stroke[b_axis], view.stroke[1])
+    return {axis: _cluster(values[axis], env.length(axis), stroke[axis]) for axis in _AXES}
 
 
 def _inside(outline: S.Outline, pts: np.ndarray) -> np.ndarray:
@@ -262,22 +302,25 @@ def _one_piece(occ: np.ndarray) -> bool:
     return n == 1
 
 
-def carve(occ: np.ndarray, evidence: list[_Evidence]) -> tuple[np.ndarray, float, float]:
-    """Greedy carving from the viewer's side, region by region; returns the cells and the start and end cost."""
-    def total(o: np.ndarray) -> float:
-        return sum(_cost(o, ev) for ev in evidence)
+def carve(occ: np.ndarray, evidence: list[_Evidence]) -> tuple[np.ndarray, float, float, np.ndarray]:
+    """Greedy carving from the viewer's side, region by region. Returns the cells, the start and end cost, and the
+    cells removed by a cut that only its own view asked for: how deep such a cut goes, no other view says."""
+    def costs(o: np.ndarray) -> list[float]:
+        return [_cost(o, ev) for ev in evidence]
 
-    start = best_cost = total(occ)
-    moves = [(ev.face, region) for ev in evidence for region in _regions(ev)]
+    now = costs(occ)
+    start = best_cost = sum(now)
+    unsupported = np.zeros_like(occ)
+    moves = [(k, ev.face, region) for k, ev in enumerate(evidence) for region in _regions(ev)]
     for _ in range(MAX_STEPS):
         best = None
-        for face, region in moves:
+        for k, face, region in moves:
             v = _in_view(occ, face)
             column = v[region]                        # (cells, nd)
             if not column.any():
                 continue
             nd = v.shape[2]
-            for keep in range(-1, nd - 1):            # keep cells at depth <= keep, empty the rest of the region
+            for keep in range(nd - 2, -2, -1):        # shallowest first: on a tie the least material goes
                 if not column[:, keep + 1:].any():
                     continue
                 cut = v.copy()
@@ -287,13 +330,18 @@ def carve(occ: np.ndarray, evidence: list[_Evidence]) -> tuple[np.ndarray, float
                 trial = _from_view(cut, face)
                 if not _one_piece(trial):
                     continue  # a part never falls apart: that reading of the lines is wrong
-                c = total(trial)
-                if c < best_cost - 1e-9 and (best is None or c < best[0]):
-                    best = (c, trial)
+                per = costs(trial)
+                c = sum(per)
+                if c < best_cost - 1e-9 and (best is None or c < best[0] - 1e-9):
+                    others = any(per[j] < now[j] - 1e-9 for j in range(len(per)) if j != k)
+                    best = (c, trial, per, others)
         if best is None:
             break
-        best_cost, occ = best[0], best[1]
-    return occ, start, best_cost
+        best_cost, trial, now, others = best
+        if not others:
+            unsupported |= occ & ~trial
+        occ = trial
+    return occ, start, best_cost, unsupported
 
 
 # ---- cells -> pockets ---------------------------------------------------------------------------------------------
@@ -395,31 +443,42 @@ def relief(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> tup
         return [], [setup]
     if setup is None:
         return [], []
-    grid, occ, evidence = setup
-    carved, start, end = carve(occ, evidence)
-    if start <= 0 or (start - end) < MIN_GAIN * start:
+    grid, occ, evidence, stroke = setup
+    carved, start, end, unsupported = carve(occ, evidence)
+    if start <= 0 or (start - end) < max(MIN_GAIN * start, MIN_GAIN_ABS):
         return [], []
     if _cell_volume(occ & ~carved, grid) > MAX_CARVE * _cell_volume(occ, grid):
         return [], ["The inner lines of the drawing could not be read with confidence; only the outlines are used."]
-    pockets = []
+    pockets, guessed = [], 0
+    smallest = max(1.0, 2 * stroke)
     for box in _boxes(occ & ~carved):
         face = _open_face(box, carved)
-        if face is not None:
-            pockets.append(_pocket(box, face, carved, grid, env))
+        if face is None:
+            continue
+        p = _pocket(box, face, carved, grid, env)
+        if min(p["width_mm"], p["height_mm"], p["depth_mm"] or smallest) < smallest:
+            continue  # thinner than two lines: the drawing's own line width, not a feature
+        if unsupported[box].any():  # no other view says how deep: a blind default the user sets
+            length = env.length(_FRAME[face][4])
+            p["depth_mm"] = round(max(1.0, DEFAULT_DEPTH * length) * 2) / 2
+            p["_depth_default"] = True
+            guessed += 1
+        pockets.append(p)
     if not pockets:
         return [], []
     n = len(pockets)
-    note = (f"{n} notch{'es' if n > 1 else ''} or pocket{'s' if n > 1 else ''} read from the inner lines of the "
-            "drawing; check them in the model.")
-    return pockets, [note]
+    notes = [(f"{n} notch{'es' if n > 1 else ''} or pocket{'s' if n > 1 else ''} read from the inner lines of the "
+              "drawing; check them in the model.")]
+    if guessed:
+        notes.append(f"{guessed} pocket depth{'s are' if guessed > 1 else ' is'} not drawn (no hidden lines in "
+                     "another view); set to a quarter of the part, check it.")
+    return pockets, notes
 
 
 def _setup(observations, outlines: dict[str, S.Outline], env: S.Envelope):
     """(grid, hull cells, evidence per view), a note when the drawing is too busy, or None when relief does not
     apply: fewer than two line-art views with inner lines, a missing canonical outline, round outlines."""
-    views = [_View(o.face, _to_mm(o.outline.lines, o.face, env), _to_mm(o.outline.hidden, o.face, env),
-                   [_circle_mm(o, c, env) for c in o.outline.circles])
-             for o in observations if o.line_art and o.outline.lines]
+    views = [_view(o, env) for o in observations if o.line_art and o.outline.lines]
     if len(views) < 2 or not all(f in outlines for f in S.CANONICAL_FACES):
         return None
     if not all(_square(outlines[f]) for f in S.CANONICAL_FACES):
@@ -430,7 +489,7 @@ def _setup(observations, outlines: dict[str, S.Outline], env: S.Envelope):
     occ = hull_cells(grid, outlines, env)
     if not occ.any():
         return None
-    return grid, occ, [_evidence(v, grid, env) for v in views]
+    return grid, occ, [_evidence(v, grid, env) for v in views], max(max(v.stroke) for v in views)
 
 
 def mismatch(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> float | None:
@@ -439,7 +498,7 @@ def mismatch(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> f
     setup = _setup(observations, outlines, env)
     if setup is None or isinstance(setup, str):
         return None
-    _, occ, evidence = setup
+    _, occ, evidence, _ = setup
     return carve(occ, evidence)[2]
 
 
@@ -483,11 +542,13 @@ def bosses(observations, edges: dict[int, set[int]], outlines: dict[str, S.Outli
             continue
         _, _, _, _, d_axis, side = _FRAME[o.face]
         length = env.length(d_axis)
-        for i in sorted(edges.get(k, ())):
+        hubs = [i for i, c in enumerate(o.outline.circles)
+                if i not in edges.get(k, ()) and c.ring and not chamfer_ring(c, o.stroke)]
+        for i in sorted(edges.get(k, ())) + hubs:
             c = o.outline.circles[i]
             a, b, d = _circle_mm(o, c, env)
-            if c.ring:  # a chamfered tip: the outer circle is the pin
-                d *= c.ring / c.d
+            if c.ring and (i in hubs or chamfer_ring(c, o.stroke)):
+                d *= c.ring / c.d  # a chamfered pin's tip, or a hub around a bore: the outer circle is the boss
             centre = S.to_global(o.face, a, b, env)
             heights = []
             for g in S.CANONICAL_FACES:
@@ -523,11 +584,15 @@ def bosses(observations, edges: dict[int, set[int]], outlines: dict[str, S.Outli
     return out, [note]
 
 
-def pocket_provenance(pockets: list[dict], start: int) -> dict[str, str]:
-    """Provenance of the pockets' and bosses' numbers: scaled from the typed envelope (rule 2)."""
+def pocket_provenance(pockets: list[dict], start: int, inferred: bool = False) -> dict[str, str]:
+    """Provenance of the pockets' and bosses' numbers: scaled from the typed envelope (rule 2), "inferred" when an
+    outline they were read against was drawn by a model or assumed, and "default" for a depth no view showed. The
+    private marks are taken off the dicts here."""
     prov = {}
     for k, p in enumerate(pockets, start=start):
+        guessed = p.pop("_depth_default", False)
         for name in ("a_mm", "b_mm", "width_mm", "height_mm", "depth_mm", "diameter_mm"):
             if p.get(name) is not None:
-                prov[f"features[{k}].{name}"] = POCKET_PROV
+                prov[f"features[{k}].{name}"] = ("default" if guessed and name == "depth_mm"
+                                                 else "inferred" if inferred else POCKET_PROV)
     return prov
