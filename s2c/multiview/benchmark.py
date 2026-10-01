@@ -25,7 +25,8 @@ from s2c.multiview import spec as S
 from s2c.multiview.artifacts import build_part
 from s2c.multiview.pipeline import ImageInput, MvPipeline
 from s2c.multiview.raster import Mesh, face_mask, iou, normalize_mask, solid_mesh
-from s2c.multiview.sheet import AUTO, SKIP, Box, Naming, Sheet, crop_views, name_views, split_sheet
+from s2c.multiview.sheet import AUTO, SKIP, Box, Naming, Sheet, crop_views, split_sheet
+from s2c.multiview.sheet_read import choose_naming
 
 MAX_TRIANGLES = 200_000
 ROW_FIELDS = ("frame_iou", "vol_true", "vol_built", "vol_err", "voxel_iou", "view_iou", "features")
@@ -229,7 +230,8 @@ def _named_ok(sheet: Sheet, naming: Naming, truth: dict[str, Box]) -> bool:
 
 
 def sheet_inputs(ref: RefPart, root: Path | None = None) -> tuple[list[ImageInput], bool, str | None]:
-    """The part's sheet split, named by layout (no label reader) and cropped as the Studio does (spec 3.1, 3.2).
+    """The part's sheet split, named by layout with the projection on Auto (no label reader, so the drawing decides
+    and a tie keeps first-angle) and cropped as the Studio does (spec 3.1, 3.2; sheet-reading spec 2.4).
 
     Returns the crops as kind "drawing" with their named faces; whether every view was named with its true face; and
     "split" (the part drawing has under 3 views) or "naming" (under 3 named views, or one left "auto") when the
@@ -240,7 +242,7 @@ def sheet_inputs(ref: RefPart, root: Path | None = None) -> tuple[list[ImageInpu
         folder.mkdir(parents=True, exist_ok=True)
         cv2.imwrite(str(folder / f"{ref.name.replace('/', '__')}.png"), image)
     sheet = split_sheet(image)
-    naming = name_views(sheet, image)
+    naming = choose_naming(sheet, image, "auto")
     ok = _named_ok(sheet, naming, truth)
     if naming.drawing < 0 or len(sheet.drawings[naming.drawing].views) < len(SHEET_GRID):
         return [], ok, "split"

@@ -693,18 +693,37 @@ def _filled(ink: np.ndarray, box: Box, k: int) -> np.ndarray:
 def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
     """The view's geometry without its annotations (sheet-reading spec 2.1): the drawn region filled, lines about a
     line width thick opened away (dimension and extension lines, leaders, text, centre-line tails), and the filled
-    region kept where it joins what survived. Returns the body's box on the sheet and its mask in that box. A view
-    with no closed region (a broken outline) keeps its box and its ink."""
+    region kept where it joins what survived. Returns the body's box on the sheet and its mask in that box. An
+    outline with a small break (an edge-detected drawing) is closed first when the strict body loses most of the
+    view; a view with no closed region at all keeps its box and its ink."""
     x, y, w, h = box
     sub = ink[y: y + h, x: x + w] > 0
-    filled = ndimage.binary_fill_holes(sub)
+    strict = _solid(sub, sub)
+    if strict is None:
+        return box, sub
+    closed = cv2.morphologyEx(sub.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)) > 0
+    mended = _solid(closed, sub)
+    (bx, by, bw, bh), body = strict
+    if mended is not None:
+        mx, my, mw, mh = mended[0]
+        rim = max(3, 0.02 * max(mw, mh))
+        around = min(bx - mx, by - my, mx + mw - bx - bw, my + mh - by - bh)  # a broken outer outline rings it;
+        if around >= rim and bw * bh < 0.7 * mw * mh:                       # dimensions sit on one or two sides
+            (bx, by, bw, bh), body = mended
+    return (x + bx, y + by, bw, bh), body
+
+
+def _solid(drawn: np.ndarray, sub: np.ndarray) -> tuple[Box, np.ndarray] | None:
+    """The filled region of `drawn` with thin lines opened away, kept where it joins what survived; its box and mask
+    in the view's frame. None when nothing closed survives."""
+    filled = ndimage.binary_fill_holes(drawn)
     dist = cv2.distanceTransform(sub.astype(np.uint8), cv2.DIST_L2, 3)
     stroke = 2 * max(1.0, float(np.percentile(dist[sub], 90))) if sub.any() else 2.0
     k = max(5, int(2 * stroke) + 1) | 1
     core = cv2.morphologyEx(filled.astype(np.uint8), cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(core, connectivity=8)
     if n < 2:
-        return box, sub
+        return None
     big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
     bx, by, bw, bh = (int(v) for v in stats[big, :4])
     keep = [i for i in range(1, n) if i == big or (
@@ -719,7 +738,7 @@ def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
     body = filled & grown & joined
     ys, xs = np.nonzero(body)
     x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
-    return (x + x0, y + y0, x1 - x0 + 1, y1 - y0 + 1), body[y0: y1 + 1, x0: x1 + 1]
+    return (x0, y0, x1 - x0 + 1, y1 - y0 + 1), body[y0: y1 + 1, x0: x1 + 1]
 
 
 def _body(ink: np.ndarray, box: Box, long: int) -> Box:
