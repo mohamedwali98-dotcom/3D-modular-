@@ -64,6 +64,7 @@ class ImageInput:
     data: bytes
     face: str | None = None
     kind: str | None = None
+    mm_per_px: float | None = None  # a known scale in the image's own pixels: a drawing sheet's dimensions
 
 
 @dataclass
@@ -165,6 +166,7 @@ class MvPipeline:
             if bgr is None:
                 return S.MvAbstain(stage="outline", reason="bad_image",
                                    remedy="The file is not an image. Upload a JPEG or PNG.")
+            given = item.mm_per_px * max(bgr.shape[:2]) if item.mm_per_px else None  # mm across the long side
             bgr = resize_long_side(bgr)
             _emit(progress, key="label", state="running", index=i)
             label = self._label(item)
@@ -173,7 +175,8 @@ class MvPipeline:
             height, width = bgr.shape[:2]
             _emit(progress, key="label", state="done", index=i, face=label.face, kind=label.input_kind,
                   confidence=label.confidence, width=width, height=height)
-            mm_per_px, mask_out = None, ()
+            mm_per_px = given / max(bgr.shape[:2]) if given else None
+            mask_out = ()
             if reference and label.input_kind == "photo":
                 ref = find_reference(bgr, reference)
                 if isinstance(ref, S.MvAbstain):

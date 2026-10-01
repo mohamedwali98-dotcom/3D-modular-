@@ -92,3 +92,21 @@ def test_no_reader_no_scale(third):
     img, _, _ = third
     ink, bodies = _bodies(img, split_sheet(img))
     assert read_dimensions(img, ink, bodies, None).mm_per_px is None
+
+
+def test_views_with_a_known_scale_build_with_no_typed_size():
+    """ImageInput.mm_per_px (the image's own pixels): the envelope comes out measured, so nothing needs typing."""
+    from s2c.multiview import spec as S
+    from s2c.multiview.pipeline import ImageInput, MvPipeline
+    from tests.line_views import draw_view
+    part = _block()
+    pipe = MvPipeline()
+    images = []
+    for f in ("front", "top", "right"):
+        ink = cv2.copyMakeBorder(draw_view(part, f, 4.0), 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=0)
+        images.append(ImageInput(cv2.imencode(".png", 255 - ink)[1].tobytes(), f, "drawing", mm_per_px=0.25))
+    spec = pipe.fuse(pipe.observe(images))
+    assert isinstance(spec, S.MultiViewSpec), spec
+    env = spec.envelope
+    assert (env.x_mm, env.y_mm, env.z_mm) == pytest.approx((80, 60, 70), rel=0.02)
+    assert spec.provenance["envelope.x_mm"] == "measured"
