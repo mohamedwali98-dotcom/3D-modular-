@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import cv2
 import numpy as np
+from scipy import ndimage
 
 from s2c.multiview import spec as S
 
@@ -255,6 +256,12 @@ def _regions(ev: _Evidence) -> list[np.ndarray]:
     return out
 
 
+def _one_piece(occ: np.ndarray) -> bool:
+    """The cells form one solid, joined face to face."""
+    _, n = ndimage.label(occ)
+    return n == 1
+
+
 def carve(occ: np.ndarray, evidence: list[_Evidence]) -> tuple[np.ndarray, float, float]:
     """Greedy carving from the viewer's side, region by region; returns the cells and the start and end cost."""
     def total(o: np.ndarray) -> float:
@@ -278,6 +285,8 @@ def carve(occ: np.ndarray, evidence: list[_Evidence]) -> tuple[np.ndarray, float
                 sub[:, keep + 1:] = False
                 cut[region] = sub
                 trial = _from_view(cut, face)
+                if not _one_piece(trial):
+                    continue  # a part never falls apart: that reading of the lines is wrong
                 c = total(trial)
                 if c < best_cost - 1e-9 and (best is None or c < best[0]):
                     best = (c, trial)

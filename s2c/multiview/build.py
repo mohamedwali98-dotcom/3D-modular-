@@ -129,7 +129,12 @@ def _cut_feature(solid: cq.Workplane, f, env: Envelope) -> cq.Workplane:
     if not (0 <= f.a_mm <= a_len and 0 <= f.b_mm <= b_len):
         raise BuildError("feature_outside_part", "A hole or slot lies outside the part. Check its position.")
     if isinstance(f, (FacePocket, FaceBoss)):
-        return solid.cut(_open_cut(f, env))
+        out = solid.cut(_open_cut(f, env))
+        pieces = out.solids().vals()
+        if len(pieces) > len(solid.solids().vals()) or not all(p.isValid() for p in pieces):
+            log.warning("a %s on %s would split the part; left out", f.type, f.face)
+            return solid  # read from lines, not typed: a cut that splits the part misread them
+        return out
     if f.depth_mm is None:  # through: start 1 mm outside, end 1 mm past the far side
         wp, dist = cq.Workplane(_face_plane(f.face, env, 1.0)), env.length(FACE_AXES[f.face][2]) + 2.0
     else:  # blind: depth measured from the envelope face inward

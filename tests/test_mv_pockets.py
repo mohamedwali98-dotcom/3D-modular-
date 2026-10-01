@@ -54,3 +54,10 @@ def test_review_names_pockets_and_pins():
         {"type": "boss", "face": "top", "a_mm": 20, "b_mm": 15, "diameter_mm": 8, "height_mm": 6}])
     assert field_label(spec, "features[0].height_mm") == "Pocket 1 (front) · height"
     assert field_label(spec, "features[1].diameter_mm") == "Pin 2 (top) · diameter"
+
+
+def test_a_pocket_that_would_split_the_part_is_skipped():
+    """A pocket read from a drawing is a guess about the lines: one that would cut the part in two is left out."""
+    spec = make_spec((40, 20, 30), features=[
+        {"type": "pocket", "face": "front", "a_mm": 20, "b_mm": 10, "width_mm": 4, "height_mm": 30}])
+    assert volume(build(spec)) == pytest.approx(40 * 20 * 30, rel=1e-4)

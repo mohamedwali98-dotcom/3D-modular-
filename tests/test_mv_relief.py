@@ -166,3 +166,17 @@ def test_chamfered_pins_drawn_as_two_circles_are_pins():
     assert len(pins) == 2, spec.warnings
     assert all(f.diameter_mm == pytest.approx(8, abs=0.6) for f in pins)
     assert not [f for f in spec.features if f.type == "hole"]
+
+
+def test_carving_never_splits_the_part():
+    """A drawing a carve could match by cutting the part in two (the middle drawn as empty): it stays one piece."""
+    import numpy as np
+
+    from s2c.multiview.relief import _Evidence, carve
+    occ = np.ones((3, 1, 1), bool)
+    obs_v = np.ones((4, 1), bool)                                   # every vertical grid edge drawn
+    obs_h = np.array([[True, True], [False, False], [True, True]])  # the middle column has no top or bottom
+    ev = _Evidence("front", obs_v, obs_h, np.zeros_like(obs_v), np.zeros_like(obs_h),
+                   np.ones(obs_v.shape), np.ones(obs_h.shape))
+    carved, _, _ = carve(occ, [ev])
+    assert carved[0].any() and carved[1].any() and carved[2].any()
