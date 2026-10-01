@@ -32,7 +32,7 @@ def test_a_view_body_leaves_its_dimensions_out(third):
 
 
 def test_named_views_of_a_dimensioned_sheet(third):
-    img, boxes, _ = third
+    img, _, _ = third
     sheet = split_sheet(img)
     naming = name_views(sheet, img, "third")
     faces = sorted(f for f in naming.faces if f not in ("auto", "skip"))

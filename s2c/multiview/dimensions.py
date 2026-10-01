@@ -45,7 +45,7 @@ class SheetScale:
 
 def _segments(lines: np.ndarray, axis: str) -> list[tuple[float, int, int]]:
     """(position across, start, end) of each straight run of a line mask: rows for "h", columns for "v"."""
-    n, _, stats, _ = cv2.connectedComponentsWithStats(lines, connectivity=8)
+    _, _, stats, _ = cv2.connectedComponentsWithStats(lines, connectivity=8)
     out = []
     for x, y, w, h, _ in stats[1:]:
         out.append((y + h / 2, int(x), int(x + w - 1)) if axis == "h" else (x + w / 2, int(y), int(y + h - 1)))
@@ -55,7 +55,7 @@ def _segments(lines: np.ndarray, axis: str) -> list[tuple[float, int, int]]:
 def _words(text_ink: np.ndarray, long: int) -> list[Box]:
     g = max(3, round(WORD_GROW * long))
     grown = cv2.dilate(text_ink, np.ones((g, g), np.uint8))
-    n, _, stats, _ = cv2.connectedComponentsWithStats(grown, connectivity=8)
+    _, _, stats, _ = cv2.connectedComponentsWithStats(grown, connectivity=8)
     boxes = []
     for x, y, w, h, area in stats[1:]:
         short, tall = min(w, h), max(w, h)
