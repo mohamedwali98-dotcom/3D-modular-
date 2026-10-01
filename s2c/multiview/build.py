@@ -8,7 +8,17 @@ from pathlib import Path
 import cadquery as cq
 
 from s2c.multiview import exporters
-from s2c.multiview.spec import FACE_AXES, Envelope, FaceHole, Fillet, MultiViewSpec, Outline, face_size
+from s2c.multiview.spec import (
+    FACE_AXES,
+    Envelope,
+    FaceBoss,
+    FaceHole,
+    FacePocket,
+    Fillet,
+    MultiViewSpec,
+    Outline,
+    face_size,
+)
 
 
 class BuildError(Exception):
@@ -111,10 +121,15 @@ def _face_plane(face: str, env: Envelope, offset: float = 0.0) -> cq.Plane:
     return cq.Plane(origin=moved, xDir=x_dir, normal=normal)
 
 
+BOSS_MARGIN = 1.05  # the square cut around a pin is this much wider than the pin, so no sliver of the hull stays
+
+
 def _cut_feature(solid: cq.Workplane, f, env: Envelope) -> cq.Workplane:
     a_len, b_len = face_size(f.face, env)
     if not (0 <= f.a_mm <= a_len and 0 <= f.b_mm <= b_len):
         raise BuildError("feature_outside_part", "A hole or slot lies outside the part. Check its position.")
+    if isinstance(f, (FacePocket, FaceBoss)):
+        return solid.cut(_open_cut(f, env))
     if f.depth_mm is None:  # through: start 1 mm outside, end 1 mm past the far side
         wp, dist = cq.Workplane(_face_plane(f.face, env, 1.0)), env.length(FACE_AXES[f.face][2]) + 2.0
     else:  # blind: depth measured from the envelope face inward
@@ -122,6 +137,18 @@ def _cut_feature(solid: cq.Workplane, f, env: Envelope) -> cq.Workplane:
     wp = wp.center(f.a_mm, f.b_mm)
     shape = wp.circle(f.diameter_mm / 2) if isinstance(f, FaceHole) else wp.slot2D(f.length_mm, f.width_mm, f.angle_deg)
     return solid.cut(shape.extrude(-dist))
+
+
+def _open_cut(f: FacePocket | FaceBoss, env: Envelope) -> cq.Workplane:
+    """The material a pocket or a boss removes. Both open on their face, so the cut starts 1 mm outside it."""
+    far = env.length(FACE_AXES[f.face][2])
+    depth = f.height_mm if isinstance(f, FaceBoss) else (far + 1.0 if f.depth_mm is None else f.depth_mm)
+    plane = _face_plane(f.face, env, 1.0)
+    if isinstance(f, FacePocket):
+        return cq.Workplane(plane).center(f.a_mm, f.b_mm).rect(f.width_mm, f.height_mm).extrude(-(depth + 1.0))
+    side = f.diameter_mm * BOSS_MARGIN
+    square = cq.Workplane(plane).center(f.a_mm, f.b_mm).rect(side, side).extrude(-(depth + 1.0))
+    return square.cut(cq.Workplane(plane).center(f.a_mm, f.b_mm).circle(f.diameter_mm / 2).extrude(-(depth + 1.0)))
 
 
 _EDGE_SELECTORS = {"all": None, "all_vertical": "|Z", "top": ">Z", "bottom": "<Z"}

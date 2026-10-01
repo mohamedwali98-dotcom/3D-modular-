@@ -68,6 +68,28 @@ class FaceSlot(_Strict):
     depth_mm: Mm | None = None
 
 
+class FacePocket(_Strict):
+    """An axis-aligned rectangular cut from the envelope face inward, centred at (a, b): a pocket, a step or, running
+    off the outline, a corner notch. Read from the inner lines of a drawing (complex-parts spec 2026-10-01)."""
+    type: Literal["pocket"] = "pocket"
+    face: Face
+    a_mm: float
+    b_mm: float
+    width_mm: Mm   # along a
+    height_mm: Mm  # along b
+    depth_mm: Mm | None = None  # None means through
+
+
+class FaceBoss(_Strict):
+    """A round pin standing on the face: within height_mm of the envelope face only its cylinder is kept."""
+    type: Literal["boss"] = "boss"
+    face: Face
+    a_mm: float
+    b_mm: float
+    diameter_mm: Mm
+    height_mm: Mm
+
+
 class Fillet(_Strict):
     type: Literal["fillet"] = "fillet"
     edges: EdgeSelector = "all_vertical"
@@ -80,7 +102,7 @@ class Chamfer(_Strict):
     radius_mm: Mm
 
 
-FaceFeature = Annotated[FaceHole | FaceSlot, Field(discriminator="type")]
+FaceFeature = Annotated[FaceHole | FaceSlot | FacePocket | FaceBoss, Field(discriminator="type")]
 Finish = Annotated[Fillet | Chamfer, Field(discriminator="type")]
 
 

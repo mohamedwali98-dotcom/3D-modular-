@@ -3,7 +3,7 @@ import math
 
 import numpy as np
 
-from s2c.multiview.spec import Chamfer, FaceHole, FaceSlot, Fillet, MultiViewSpec, numeric_names
+from s2c.multiview.spec import Chamfer, FaceBoss, FaceHole, FacePocket, FaceSlot, Fillet, MultiViewSpec, numeric_names
 
 
 def rect(w, h, x0=0.0, y0=0.0):
@@ -18,7 +18,7 @@ def outline(pts, inner=(), source="observed", confidence=0.9):
     return {"outer": list(pts), "inner": [list(p) for p in inner], "source": source, "confidence": confidence}
 
 
-_FEATURES = {"hole": FaceHole, "slot": FaceSlot}
+_FEATURES = {"hole": FaceHole, "slot": FaceSlot, "pocket": FacePocket, "boss": FaceBoss}
 _FINISHES = {"fillet": Fillet, "chamfer": Chamfer}
 
 
