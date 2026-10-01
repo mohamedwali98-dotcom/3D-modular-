@@ -529,7 +529,7 @@ def snap(data: dict, clearance: str = "medium", kinds: dict | None = None) -> No
     squared vertex by vertex; drawn and photographed ones keep their curves and thin features (level snap)."""
     prov, snapped = data["provenance"], data.setdefault("snapped", [])
     for k, f in enumerate(data["features"]):
-        for name in ("a_mm", "b_mm", "diameter_mm", "depth_mm", "width_mm", "length_mm"):
+        for name in ("a_mm", "b_mm", "diameter_mm", "depth_mm", "width_mm", "length_mm", "height_mm"):
             path = f"features[{k}].{name}"
             if f.get(name) is None or prov.get(path) not in SNAPPABLE:
                 continue

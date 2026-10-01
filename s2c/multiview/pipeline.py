@@ -40,6 +40,7 @@ from s2c.multiview.qwen_image import MAX_REFS, ImageGen, default_gen
 from s2c.multiview.qwen_reader import qwen_batch_reader
 from s2c.multiview.raster import Mesh, face_mask, iou, normalize_mask, polygon_mask, solid_mesh
 from s2c.multiview.reference import find_reference
+from s2c.multiview.relief import pocket_provenance, relief
 from s2c.multiview.settings import AiSettings, GeometrySettings
 from s2c.multiview.slice import slice_solid
 from s2c.multiview.turned import WARNING as TURNED_WARNING
@@ -280,6 +281,11 @@ class MvPipeline:
         with_prov = {f: (ol, outlines[f][1] if f in outlines else ("inferred" if ol.source == "inferred" else "default"))
                      for f, ol in full.items()}
         feats, feat_prov = features_from(observed.observations, env, edges)
+        if len(observed.observations) >= 2 and all(o.line_art for o in observed.observations):
+            pockets, more = relief(observed.observations, {f: ol for f, (ol, _) in with_prov.items()}, env)
+            feat_prov.update(pocket_provenance(pockets, len(feats)))
+            feats += pockets
+            warnings += more
         _emit(progress, key="fuse", state="running")
         try:
             spec = assemble(env, env_prov, with_prov, feats, feat_prov, warnings, user_values, accepted,
