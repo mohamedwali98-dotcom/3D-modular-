@@ -51,3 +51,44 @@ def test_crops_hold_no_dimension_lines(third):
         w, h = xs.max() - xs.min() + 1, ys.max() - ys.min() + 1
         tw, th = boxes[face][2], boxes[face][3]
         assert abs(w - tw) <= 6 and abs(h - th) <= 6, (face, (w, h), (tw, th))
+
+
+def _bodies(img, sheet):
+    from s2c.multiview.sheet import ink_mask
+    ink = ink_mask(img)
+    long = max(img.shape[:2])
+    return ink, [view_body(ink, v.box, long) for d in sheet.drawings for v in d.views]
+
+
+def _service(words):
+    from s2c.reading import ReadingService
+    from tests.line_views import WordReader
+    return ReadingService([WordReader(words)], cache=None)
+
+
+def test_the_dimensions_give_the_sheet_scale(third):
+    from s2c.multiview.dimensions import read_dimensions
+    img, _, words = third
+    ink, bodies = _bodies(img, split_sheet(img))
+    scale = read_dimensions(img, ink, bodies, _service(words))
+    assert scale.mm_per_px == pytest.approx(0.25, rel=0.01), scale
+    assert len(scale.used) == 6 and not scale.rejected
+    assert {d.value_mm for d in scale.used} == {80, 70, 66}
+
+
+def test_a_misread_dimension_is_rejected_and_named(third):
+    from s2c.multiview.dimensions import read_dimensions
+    img, _, words = third
+    wrong = [(box, "18" if k == 0 else t) for k, (box, t) in enumerate(words)]  # 80 read as 18
+    ink, bodies = _bodies(img, split_sheet(img))
+    scale = read_dimensions(img, ink, bodies, _service(wrong))
+    assert scale.mm_per_px == pytest.approx(0.25, rel=0.01)
+    assert [d.text for d in scale.rejected] == ["18"]
+    assert any("18" in w for w in scale.warnings)
+
+
+def test_no_reader_no_scale(third):
+    from s2c.multiview.dimensions import read_dimensions
+    img, _, _ = third
+    ink, bodies = _bodies(img, split_sheet(img))
+    assert read_dimensions(img, ink, bodies, None).mm_per_px is None
