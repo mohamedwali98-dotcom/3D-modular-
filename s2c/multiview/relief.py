@@ -43,6 +43,15 @@ class _View:
     face: str
     visible: list[Seg]
     hidden: list[Seg]
+    circles: list[tuple[float, float, float]] = ()  # (a, b, d) mm: a drawn circle explains the grid edges it covers
+
+
+def _circle_mm(o, c, env: S.Envelope) -> tuple[float, float, float]:
+    """A drawn circle's centre (a, b) and diameter in the face frame, scaled from the outline's bbox."""
+    a_len, b_len = S.face_size(o.face, env)
+    x, y, w, h = o.outline.bbox
+    sa, sb = a_len / max(w - 1, 1), b_len / max(h - 1, 1)
+    return float((c.cx - x) * sa), float((y + h - 1 - c.cy) * sb), float(c.d * (sa + sb) / 2)
 
 
 def _to_mm(lines, face: str, env: S.Envelope) -> list[Seg]:
@@ -198,8 +207,13 @@ def _evidence(view: _View, grid: dict[str, np.ndarray], env: S.Envelope) -> _Evi
     obs_h = _covered(view.visible, "h", B, A, tb).T
     hid_v = _covered(view.hidden, "v", A, B, ta)
     hid_h = _covered(view.hidden, "h", B, A, tb).T
-    w_v = np.broadcast_to(np.diff(B)[None, :] / b_len, obs_v.shape)
-    w_h = np.broadcast_to(np.diff(A)[:, None] / a_len, obs_h.shape)
+    w_v = np.broadcast_to(np.diff(B)[None, :] / b_len, obs_v.shape).copy()
+    w_h = np.broadcast_to(np.diff(A)[:, None] / a_len, obs_h.shape).copy()
+    for a, b, d in view.circles:  # a hole or a pin: the grid edges in its square are the circle's business
+        in_a = (A >= a - d / 2 - ta) & (A <= a + d / 2 + ta)
+        in_b = (B >= b - d / 2 - tb) & (B <= b + d / 2 + tb)
+        w_v[np.ix_(in_a, in_b[:-1] & in_b[1:])] = 0
+        w_h[np.ix_(in_a[:-1] & in_a[1:], in_b)] = 0
     return _Evidence(view.face, obs_v, obs_h, hid_v, hid_h, w_v, w_h)
 
 
@@ -345,7 +359,8 @@ def _square(outline: S.Outline) -> bool:
 def relief(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> tuple[list[dict], list[str]]:
     """FacePocket dicts read from the line-art views' inner lines, and Review warnings. Empty when the drawings hold
     no evidence beyond the hull, or when the reading does not explain them clearly better than the hull."""
-    views = [_View(o.face, _to_mm(o.outline.lines, o.face, env), _to_mm(o.outline.hidden, o.face, env))
+    views = [_View(o.face, _to_mm(o.outline.lines, o.face, env), _to_mm(o.outline.hidden, o.face, env),
+                   [_circle_mm(o, c, env) for c in o.outline.circles])
              for o in observations if o.line_art and o.outline.lines]
     if len(views) < 2 or not all(f in outlines for f in S.CANONICAL_FACES):
         return [], []
@@ -381,10 +396,83 @@ def _cell_volume(cells: np.ndarray, grid: dict[str, np.ndarray]) -> float:
     return float((cells * dx[:, None, None] * dy[None, :, None] * dz[None, None, :]).sum())
 
 
+def _profile(face: str, outline: S.Outline, env: S.Envelope, along: str, at: tuple[float, float], d_axis: str,
+             side: int) -> float | None:
+    """How far the outline of canonical `face` reaches along global `d_axis` toward `side`, over the columns whose
+    global `along` coordinate lies in `at`. None when no column there holds material."""
+    a_axis, a_sign, b_axis, b_sign, _, _ = _FRAME[face]
+    a_len, b_len = env.length(a_axis), env.length(b_axis)
+    s = 400.0 / max(a_len, b_len)
+    mask = np.zeros((round(b_len * s) + 1, round(a_len * s) + 1), np.uint8)
+    cv2.fillPoly(mask, [np.round([(a * s, (b_len - b) * s) for a, b in outline.outer]).astype(np.int32)], 1)
+    for loop in outline.inner:
+        cv2.fillPoly(mask, [np.round([(a * s, (b_len - b) * s) for a, b in loop]).astype(np.int32)], 0)
+    sign_along = a_sign if along == a_axis else b_sign
+    lo, hi = sorted(v if sign_along > 0 else env.length(along) - v for v in at)
+    if along == a_axis:  # columns of the mask; material rows give b
+        filled = np.nonzero(mask[:, max(0, round(lo * s)): round(hi * s) + 1].any(1))[0]
+        coords, sign = b_len - filled / s, b_sign
+    else:                # rows of the mask; material columns give a
+        filled = np.nonzero(mask[max(0, round((b_len - hi) * s)): round((b_len - lo) * s) + 1, :].any(0))[0]
+        coords, sign = filled / s, a_sign
+    if not len(filled):
+        return None
+    glob = coords if sign > 0 else env.length(d_axis) - coords
+    return float(glob.max() if side > 0 else glob.min())
+
+
+def bosses(observations, edges: dict[int, set[int]], outlines: dict[str, S.Outline],
+           env: S.Envelope) -> tuple[list[dict], list[str]]:
+    """Round pins: a drawn circle read as an edge whose neighbour views show a bump of its width standing out to the
+    envelope face on that side. Its square hull is cut back to the cylinder (FaceBoss)."""
+    out = []
+    for k, o in enumerate(observations):
+        if not o.line_art or o.outline.circular:  # a round view is a turned part's end: the revolve handles it
+            continue
+        _, _, _, _, d_axis, side = _FRAME[o.face]
+        length = env.length(d_axis)
+        for i in sorted(edges.get(k, ())):
+            a, b, d = _circle_mm(o, o.outline.circles[i], env)
+            centre = S.to_global(o.face, a, b, env)
+            heights = []
+            for g in S.CANONICAL_FACES:
+                g_axes = S.FACE_AXES[g][:2]
+                along = next((ax for ax in g_axes if ax != d_axis), None)
+                if d_axis not in g_axes or along not in centre:
+                    continue
+                # beside the pin: past the drawn line around it (the bump reads a stroke wider than the circle)
+                u, gap, ring = centre[along], max(1.0, 0.15 * d), max(1.0, 0.2 * d)
+                def reach_at(lo: float, hi: float, g=g, along=along, d_axis=d_axis, side=side) -> float | None:
+                    return _profile(g, outlines[g], env, along, (lo, hi), d_axis, side)
+
+                r0, r1, r2 = d / 2 + gap, d / 2 + gap + ring, d / 2 + gap + 2 * ring
+                inside = reach_at(u - 0.3 * d, u + 0.3 * d)
+                near = [reach_at(u - r1, u - r0), reach_at(u + r0, u + r1)]
+                far = [reach_at(u - r2, u - r1), reach_at(u + r1, u + r2)]
+                if inside is None or None in near or None in far:
+                    continue
+                if max(abs(n - f) for n, f in zip(near, far, strict=True)) > TOL * length:
+                    continue  # the surface beside it slopes: a taper or a fillet, not a shoulder a pin stands on
+                around = max(near) if side > 0 else min(near)
+                reach = inside if side > 0 else length - inside
+                h = (inside - around) * side
+                if reach >= length - TOL * length and h > TOL * length:
+                    heights.append(h)
+            if heights:
+                out.append({"type": "boss", "face": o.face, "a_mm": a, "b_mm": b, "diameter_mm": d,
+                            "height_mm": float(min(heights))})
+    if not out:
+        return [], []
+    n = len(out)
+    note = f"{n} round pin{'s' if n > 1 else ''} read from the circles and the bumps in the next view; check the height."
+    return out, [note]
+
+
 def pocket_provenance(pockets: list[dict], start: int) -> dict[str, str]:
+    """Provenance of the pockets' and bosses' numbers: scaled from the typed envelope (rule 2)."""
     prov = {}
     for k, p in enumerate(pockets, start=start):
-        for name in ("a_mm", "b_mm", "width_mm", "height_mm", "depth_mm"):
+        for name in ("a_mm", "b_mm", "width_mm", "height_mm", "depth_mm", "diameter_mm"):
             if p.get(name) is not None:
                 prov[f"features[{k}].{name}"] = POCKET_PROV
     return prov

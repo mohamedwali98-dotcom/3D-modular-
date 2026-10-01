@@ -121,7 +121,7 @@ def _face_plane(face: str, env: Envelope, offset: float = 0.0) -> cq.Plane:
     return cq.Plane(origin=moved, xDir=x_dir, normal=normal)
 
 
-BOSS_MARGIN = 1.05  # the square cut around a pin is this much wider than the pin, so no sliver of the hull stays
+BOSS_CLEAR = 0.15  # the cut around a pin reaches this share of its diameter (1 mm at least) past it on each side
 
 
 def _cut_feature(solid: cq.Workplane, f, env: Envelope) -> cq.Workplane:
@@ -146,7 +146,7 @@ def _open_cut(f: FacePocket | FaceBoss, env: Envelope) -> cq.Workplane:
     plane = _face_plane(f.face, env, 1.0)
     if isinstance(f, FacePocket):
         return cq.Workplane(plane).center(f.a_mm, f.b_mm).rect(f.width_mm, f.height_mm).extrude(-(depth + 1.0))
-    side = f.diameter_mm * BOSS_MARGIN
+    side = f.diameter_mm + 2 * max(1.0, BOSS_CLEAR * f.diameter_mm)  # the hull's pin is a drawn line wider than the pin
     square = cq.Workplane(plane).center(f.a_mm, f.b_mm).rect(side, side).extrude(-(depth + 1.0))
     return square.cut(cq.Workplane(plane).center(f.a_mm, f.b_mm).circle(f.diameter_mm / 2).extrude(-(depth + 1.0)))
 

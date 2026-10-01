@@ -102,3 +102,38 @@ def test_filled_renders_never_get_pockets():
     assert not any(o.line_art for o in observed.observations)
     spec = pipe.fuse(observed, {"envelope.x_mm": 80, "envelope.y_mm": 60, "envelope.z_mm": 70})
     assert _pockets(spec) == []
+
+
+def _pins(part, xs=(20, 60), z=15, d=8, h=6, top=60):
+    for x in xs:
+        part = part.union(cq.Workplane("XZ", origin=(0, top, 0)).center(x, z).circle(d / 2).extrude(-h))
+    return part
+
+
+def _section_area(solid, y) -> float:
+    """Area of the built part cut by the plane at height y."""
+    bb = solid.val().BoundingBox()
+    slab = cq.Workplane("XY").box(bb.xlen + 2, 0.01, bb.zlen + 2, centered=False).translate((bb.xmin - 1, y, bb.zmin - 1))
+    return solid.intersect(slab).val().Volume() / 0.01
+
+
+def test_pins_come_out_round():
+    part = _pins(_block())
+    spec = _spec(part)
+    pins = [f for f in spec.features if f.type == "boss"]
+    assert len(pins) == 2 and all(f.face == "top" for f in pins)
+    assert all(f.diameter_mm == pytest.approx(8, abs=0.6) and f.height_mm == pytest.approx(6, abs=0.6) for f in pins)
+    assert not [f for f in spec.features if f.type == "hole"]
+    built = build(spec)
+    assert _section_area(built, 63) == pytest.approx(2 * 3.14159 * 16, rel=0.12)  # two discs, not two squares
+
+
+def test_a_block_with_notches_pins_and_a_side_hole():
+    """The layout of a real user sheet: two front corner notches, two pins on top, a hole in a notch wall."""
+    part = _cut(_cut(_block(), 0, 40, 50, 15, 60, 70), 65, 40, 50, 80, 60, 70)
+    part = _pins(part, z=20)
+    part = part.cut(cq.Workplane("YZ", origin=(65, 0, 0)).center(50, 60).circle(3).extrude(-20))
+    spec = _spec(part)
+    kinds = sorted(f.type for f in spec.features)
+    assert kinds.count("boss") == 2 and kinds.count("pocket") >= 2, kinds
+    assert volume(build(spec)) == pytest.approx(_true(part), rel=0.03)
