@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
+from scipy import ndimage
 
 if TYPE_CHECKING:
     from s2c.multiview.ocr import Reader
@@ -381,7 +382,7 @@ def name_views(sheet: Sheet, image_bgr: np.ndarray, projection: str = "first",
                         f"{len(views)} views.")
 
     texts = [_read_label(image, v.label_box, reader) for v in views]
-    boxes = [_body(ink, v.box, long) for v in views]
+    boxes = [view_body(ink, _body(ink, v.box, long), long)[0] for v in views]
     faces, aligned, checked, notes, against = _name(boxes, texts, projection, _slack(long))
     if source == "setting" and against:
         other = "third" if projection == "first" else "first"
@@ -411,16 +412,18 @@ def crop_views(sheet: Sheet, image_bgr: np.ndarray, naming: Naming) -> list[tupl
     if naming.drawing < 0:
         return []
     image = _bgr(image_bgr)
-    paper = ink_mask(image) == 0
+    ink = ink_mask(image)
+    long = max(image.shape[:2])
     out = []
     for view, face in zip(sheet.drawings[naming.drawing].views, naming.faces, strict=True):
         if face == SKIP:
             continue
-        x, y, w, h = view.box
+        (x, y, w, h), mask = view_body(ink, view.box, long)  # the geometry only: no dimension line reaches a crop
+        keep = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
         m = max(2, round(CROP_MARGIN * max(w, h)))
         crop = np.full((h + 2 * m, w + 2 * m, 3), 255, np.uint8)
         body = image[y: y + h, x: x + w].copy()
-        body[paper[y: y + h, x: x + w]] = 255
+        body[(ink[y: y + h, x: x + w] == 0) | ~keep] = 255
         crop[m: m + h, m: m + w] = body
         out.append((cv2.imencode(".png", crop)[1].tobytes(), face))
     return out
@@ -685,6 +688,34 @@ def _filled(ink: np.ndarray, box: Box, k: int) -> np.ndarray:
     filled = np.zeros_like(closed)
     cv2.drawContours(filled, contours, -1, 1, cv2.FILLED)
     return filled[k: k + h, k: k + w]
+
+
+def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
+    """The view's geometry without its annotations (sheet-reading spec 2.1): the drawn region filled, lines about a
+    line width thick opened away (dimension and extension lines, leaders, text, centre-line tails), and the filled
+    region kept where it joins what survived. Returns the body's box on the sheet and its mask in that box. A view
+    with no closed region (a broken outline) keeps its box and its ink."""
+    x, y, w, h = box
+    sub = ink[y: y + h, x: x + w] > 0
+    filled = ndimage.binary_fill_holes(sub)
+    dist = cv2.distanceTransform(sub.astype(np.uint8), cv2.DIST_L2, 3)
+    stroke = 2 * max(1.0, float(np.percentile(dist[sub], 90))) if sub.any() else 2.0
+    k = max(5, int(2 * stroke) + 1) | 1
+    core = cv2.morphologyEx(filled.astype(np.uint8), cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(core, connectivity=8)
+    if n < 2:
+        return box, sub
+    big = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    bx, by, bw, bh = (int(v) for v in stats[big, :4])
+    keep = [i for i in range(1, n) if i == big or (
+        stats[i, cv2.CC_STAT_AREA] >= 0.02 * stats[big, cv2.CC_STAT_AREA]
+        and stats[i, 0] < bx + bw and stats[i, 0] + stats[i, 2] > bx
+        and stats[i, 1] < by + bh and stats[i, 1] + stats[i, 3] > by)]
+    grown = cv2.dilate(np.isin(labels, keep).astype(np.uint8), np.ones((k + 2, k + 2), np.uint8)) > 0
+    body = filled & grown
+    ys, xs = np.nonzero(body)
+    x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+    return (x + x0, y + y0, x1 - x0 + 1, y1 - y0 + 1), body[y0: y1 + 1, x0: x1 + 1]
 
 
 def _body(ink: np.ndarray, box: Box, long: int) -> Box:
