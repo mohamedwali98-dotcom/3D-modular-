@@ -49,7 +49,9 @@ _PROJECTION_SOURCE = {"symbol": "set by the projection symbol on the sheet, whic
                       "setting": "from the projection switch"}
 _FEATURE = re.compile(r"(features|finishes)\[(\d+)\]\.(\w+)")
 _FIELD_WORDS = {"a_mm": "position a", "b_mm": "position b", "diameter_mm": "diameter", "depth_mm": "depth",
-                "width_mm": "width", "length_mm": "length", "angle_deg": "angle", "radius_mm": "size"}
+                "width_mm": "width", "length_mm": "length", "angle_deg": "angle", "radius_mm": "size",
+                "height_mm": "height"}
+_FEATURE_WORDS = {"boss": "Pin"}
 log = logging.getLogger(__name__)
 
 
@@ -112,7 +114,7 @@ def field_label(spec: S.MultiViewSpec, path: str) -> str:
     if group == "finishes":
         return f"{spec.finishes[k].type.capitalize()} {_FIELD_WORDS.get(name, name)}"
     f = spec.features[k]
-    return f"{f.type.capitalize()} {k + 1} ({f.face}) · {_FIELD_WORDS.get(name, name)}"
+    return f"{_FEATURE_WORDS.get(f.type, f.type.capitalize())} {k + 1} ({f.face}) · {_FIELD_WORDS.get(name, name)}"
 
 
 def _value(spec: S.MultiViewSpec, path: str) -> float:

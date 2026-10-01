@@ -18,8 +18,12 @@ export interface Job { job_id: string; status: 'running' | 'done' | 'failed' | '
 export interface Outline { outer: [number, number][]; inner: [number, number][][]; source: 'observed' | 'mirrored' | 'inferred' | 'assumed'; confidence: number }
 export interface Hole { type: 'hole'; face: Face; a_mm: number; b_mm: number; diameter_mm: number; depth_mm?: number | null }
 export interface Slot { type: 'slot'; face: Face; a_mm: number; b_mm: number; width_mm: number; length_mm: number; angle_deg: number; depth_mm?: number | null }
+/** A rectangular cut from a face: a pocket, a step or a corner notch (null depth: through). */
+export interface Pocket { type: 'pocket'; face: Face; a_mm: number; b_mm: number; width_mm: number; height_mm: number; depth_mm?: number | null }
+/** A round pin standing on a face. */
+export interface Boss { type: 'boss'; face: Face; a_mm: number; b_mm: number; diameter_mm: number; height_mm: number }
 export interface Spec { version: 'mv1'; envelope: { x_mm: number; y_mm: number; z_mm: number }; views: { front: Outline; top: Outline; right: Outline };
-  features: (Hole | Slot)[]; finishes: { type: 'fillet' | 'chamfer'; edges: string; radius_mm: number }[];
+  features: (Hole | Slot | Pocket | Boss)[]; finishes: { type: 'fillet' | 'chamfer'; edges: string; radius_mm: number }[];
   provenance: Record<string, Provenance>; snapped: string[]; warnings: string[]; confidence: number }
 export interface Abstain { stage: string; reason: string; remedy: string; partial: Record<string, number> | null;
   missing?: string[]; suggested?: Record<string, number>; partial_provenance?: Record<string, Provenance> }

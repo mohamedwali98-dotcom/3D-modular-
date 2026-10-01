@@ -57,7 +57,10 @@ export interface FeatureRow {
   groupName: string;    // "Hole 1 · Ø" / "Hole 1 · position"
 }
 
-const FIELDS: Record<'hole' | 'slot', { field: string; label: string; group: 'size' | 'position' | 'angle' | 'depth' }[]> = {
+type FeatureType = 'hole' | 'slot' | 'pocket' | 'boss';
+const NAMES: Record<FeatureType, string> = { hole: 'Hole', slot: 'Slot', pocket: 'Pocket', boss: 'Pin' };
+
+const FIELDS: Record<FeatureType, { field: string; label: string; group: 'size' | 'position' | 'angle' | 'depth' }[]> = {
   hole: [
     { field: 'diameter_mm', label: 'Ø', group: 'size' },
     { field: 'a_mm', label: 'a', group: 'position' },
@@ -72,19 +75,32 @@ const FIELDS: Record<'hole' | 'slot', { field: string; label: string; group: 'si
     { field: 'angle_deg', label: 'angle', group: 'angle' },
     { field: 'depth_mm', label: 'depth', group: 'depth' },
   ],
+  pocket: [
+    { field: 'width_mm', label: 'width', group: 'size' },
+    { field: 'height_mm', label: 'height', group: 'size' },
+    { field: 'a_mm', label: 'a', group: 'position' },
+    { field: 'b_mm', label: 'b', group: 'position' },
+    { field: 'depth_mm', label: 'depth', group: 'depth' },
+  ],
+  boss: [
+    { field: 'diameter_mm', label: 'Ø', group: 'size' },
+    { field: 'height_mm', label: 'height', group: 'size' },
+    { field: 'a_mm', label: 'a', group: 'position' },
+    { field: 'b_mm', label: 'b', group: 'position' },
+  ],
 };
 
 export function featureRows(spec: Spec): FeatureRow[] {
   const rows: FeatureRow[] = [];
-  const count = { hole: 0, slot: 0 };
+  const count: Record<FeatureType, number> = { hole: 0, slot: 0, pocket: 0, boss: 0 };
   spec.features.forEach((f, index) => {
     count[f.type] += 1;
-    const feature = `${f.type === 'hole' ? 'Hole' : 'Slot'} ${count[f.type]}`;
+    const feature = `${NAMES[f.type]} ${count[f.type]}`;
     for (const d of FIELDS[f.type]) {
       const value = (f as unknown as Record<string, unknown>)[d.field];
       if (typeof value !== 'number') continue;
       const path = `features[${index}].${d.field}`;
-      const groupLabel = d.group === 'size' ? (f.type === 'hole' ? 'Ø' : 'size') : d.group;
+      const groupLabel = d.group === 'size' ? (f.type === 'hole' || f.type === 'boss' ? 'Ø' : 'size') : d.group;
       rows.push({
         path, name: `${feature} · ${d.label}`, face: f.face, value, prov: provOf(spec, path),
         snapped: spec.snapped.includes(path), index, field: d.field, label: d.label, feature,

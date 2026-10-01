@@ -45,3 +45,12 @@ def test_the_new_features_need_provenance():
     del data["provenance"]["features[0].width_mm"]
     with pytest.raises(ValidationError):
         type(spec).model_validate(data)
+
+
+def test_review_names_pockets_and_pins():
+    from s2c.studio.handlers import field_label
+    spec = make_spec((40, 26, 30), features=[
+        {"type": "pocket", "face": "front", "a_mm": 4, "b_mm": 17, "width_mm": 8, "height_mm": 6, "depth_mm": 12},
+        {"type": "boss", "face": "top", "a_mm": 20, "b_mm": 15, "diameter_mm": 8, "height_mm": 6}])
+    assert field_label(spec, "features[0].height_mm") == "Pocket 1 (front) · height"
+    assert field_label(spec, "features[1].diameter_mm") == "Pin 2 (top) · diameter"

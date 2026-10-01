@@ -25,6 +25,21 @@ describe('provenance helpers', () => {
     expect(rows).toHaveLength(6);
   });
 
+  it('lists pockets and pins read from a drawing', () => {
+    const drawn = {
+      ...spec,
+      features: [
+        { type: 'pocket', face: 'front', a_mm: 7.5, b_mm: 50, width_mm: 15, height_mm: 20, depth_mm: 20 },
+        { type: 'boss', face: 'top', a_mm: 20, b_mm: 55, diameter_mm: 8, height_mm: 6 },
+      ],
+      provenance: { ...spec.provenance, 'features[0].width_mm': 'scaled', 'features[1].diameter_mm': 'scaled' },
+    } as unknown as Spec;
+    const rows = featureRows(drawn);
+    expect(rows.find((r) => r.name === 'Pocket 1 · height')).toMatchObject({ path: 'features[0].height_mm', value: 20 });
+    expect(rows.find((r) => r.name === 'Pin 1 · Ø')).toMatchObject({ path: 'features[1].diameter_mm', value: 8, groupName: 'Pin 1 · Ø' });
+    expect(rows).toHaveLength(9);
+  });
+
   it('counts check groups the way the design does', () => {
     expect(countChecks(spec)).toBe(3);
   });
