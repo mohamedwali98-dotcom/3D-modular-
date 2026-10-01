@@ -5,8 +5,9 @@ import { resetDeadline } from '../lib/deadline';
 export type Screen = 'capture' | 'describe' | 'analyzing' | 'review' | 'model';
 export type CaptureKind = 'auto' | 'sketch' | 'photo' | 'drawing';
 export type CaptureMode = 'photos' | 'sheet';
-/** How a drawing sheet lays out its views: ISO first-angle or US third-angle. A projection symbol on the sheet wins. */
-export type Projection = 'first' | 'third';
+/** How a drawing sheet lays out its views: read from the drawing (auto), ISO first-angle or US third-angle.
+ * A projection symbol or the view labels on the sheet win. */
+export type Projection = 'auto' | 'first' | 'third';
 export interface CaptureItem { id: string; file: File; url: string; face: Face | 'auto'; kind: CaptureKind }
 /** The images a job was started with, in upload order: job.images[i] is jobItems[i] even after Capture changes. */
 export interface JobItem { url: string; face: Face | 'auto'; kind: CaptureKind }
@@ -66,7 +67,7 @@ export const initialGeometry: GeometrySettings = {
 };
 
 export const initialState: State = {
-  screen: 'capture', mode: 'photos', projection: 'first', items: [], reference: '', ai: initialAi, jobId: null, jobItems: [], jobError: null,
+  screen: 'capture', mode: 'photos', projection: 'auto', items: [], reference: '', ai: initialAi, jobId: null, jobItems: [], jobError: null,
   job: null, analysis: null, typed: {}, rejected: [], geometry: initialGeometry, model: null, modelSpec: null,
   chat: { messages: [], last: null },
 };

@@ -314,32 +314,22 @@ def _sheet_reading(image_bytes: bytes):
     return read_sketch(image_bytes)
 
 
-def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline, projection: str = "first"):
-    """(naming, [(view index, PNG crop, face)]) when the image is a clean orthographic drawing sheet, else None,
-    so hand sketches still go to the sketch reader."""
-    from s2c.multiview.sheet import sheet_crops
+def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline, projection: str = "auto"):
+    """The sheet read end to end (sheet_read.read_sheet) when the image is a clean orthographic drawing sheet, else
+    None, so hand sketches still go to the sketch reader. Views that cannot be named (an isometric picture, a
+    detail) are left out with a note: the web app has no per-view face picker."""
+    from s2c.multiview.sheet_read import read_sheet
     image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         return None
     try:
-        found = sheet_crops(image, projection, reader=pipe.reader)
+        return read_sheet(image, projection, reader=pipe.reader, service=pipe.reading())
     except Exception:
-        log.exception("drawing-sheet split failed")
+        log.exception("drawing-sheet read failed")
         return None
-    if found is None:
-        return None
-    naming, crops = found[1], found[2]
-    # The web app has no per-view face picker: a view the reader cannot name (an isometric view, a detail) is left
-    # out with a warning instead of stopping the whole analysis at "which face is this".
-    named = [c for c in crops if c[2] != "auto"]
-    if len(named) < len(crops):
-        n = len(crops) - len(named)
-        naming.warnings.append(f"{n} view{'s' if n > 1 else ''} could not be named (an isometric or detail view?) "
-                               f"and {'were' if n > 1 else 'was'} left out.")
-    return naming, named
 
 
-def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "first") -> None:
+def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "auto") -> None:
     """One sheet with several views, in place of one photo per face: read it, then join the same
     draw/fuse stages `run()` uses so Review and Model & Export are unchanged."""
     from s2c.web.sketch_adapter import observed_from_sketch
@@ -358,30 +348,34 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
 
     try:
         progress("stage", {"key": "views", "state": "running"})
-        found = _drawn_sheet(image.data, pipe, projection)
-        if found is not None:
-            naming, crops = found
+        read = _drawn_sheet(image.data, pipe, projection)
+        if read is not None:
+            from s2c.multiview.sheet_read import link_diameters
+            naming, crops = read.naming, read.crops
             with job.lock:
                 for key in ("views", "lines", "values"):
                     job.stage(key).update(tool="Drawing reader", ai=False)
-                job.images = [{"index": k, "width": 0, "height": 0, "face": face,
+                job.images = [{"index": k, "width": 0, "height": 0, "face": c.face,
                                "kind": "drawing", "outline": None, "circles": [], "reads": []}
-                              for k, (_, _, face) in enumerate(crops)]
-                for _, _, face in crops:
-                    if face in job.coverage:
-                        job.coverage[face] = "observed"
+                              for k, c in enumerate(crops)]
+                for c in crops:
+                    if c.face in job.coverage:
+                        job.coverage[c.face] = "observed"
             angle = "first-angle" if naming.projection == "first" else "third-angle"
             progress("stage", {"key": "views", "state": "done",
                                "detail": f"{len(crops)} views found ({angle}, from the {naming.projection_source})"})
             progress("stage", {"key": "lines", "state": "running"})
-            images = [ImageInput(png, face, "drawing") for _, png, face in crops]
-            observed = pipe.observe(images, None, progress=fused)
+            observed = pipe.observe(read.inputs(), None, progress=fused)
             progress("stage", {"key": "lines", "state": "done", "detail": "centre and hidden lines read"})
-            progress("stage", {"key": "values", "state": "skipped"})
+            used = len(read.scale.used)
+            progress("stage", {"key": "values", "state": "done" if used else "skipped",
+                               "detail": f"{used} dimension{'s' if used != 1 else ''} give the scale" if used
+                               else "No dimensions read: type the sizes"})
             if isinstance(observed, MvAbstain):
                 _finish(job, observed, {})
                 return
-            observed.warnings[:0] = naming.warnings
+            link_diameters(read, observed)
+            observed.warnings[:0] = read.warnings
             with job.merge_lock:
                 job.observed = observed
                 res = pipe.fuse(observed, progress=progress)
@@ -445,7 +439,7 @@ def start(job: Job, pipe: MvPipeline, images: list[ImageInput], reference: str |
     return _launch(job, run, (job, pipe, images, reference))
 
 
-def start_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "first") -> bool:
+def start_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "auto") -> bool:
     return _launch(job, run_sheet, (job, pipe, image, projection))
 
 

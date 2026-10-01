@@ -31,7 +31,8 @@ from s2c.multiview.settings import (
     PrintSettings,
     filament_metres,
 )
-from s2c.multiview.sheet import SKIP, name_views, sheet_crops
+from s2c.multiview.sheet import SKIP
+from s2c.multiview.sheet_read import choose_naming, read_sheet
 from s2c.studio.session import Item, SessionStore
 from s2c.studio.theme import FACE_BADGES, TRUSTED, bullet_html, card, chip, source_chip, stats_html
 
@@ -43,10 +44,11 @@ AXIS_LABEL = {"x": "Width (X)", "y": "Height (Y)", "z": "Depth (Z)"}
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples" / "mv" / "sketches"
 SHEET_EXAMPLE = Path(__file__).resolve().parents[2] / "examples" / "mv" / "sheet" / "sheet.png"
 SHEETS = "sheets"  # crops of split drawing sheets: <root>/sheets/<session id>/<sheet id>_<view>.png
-PROJECTIONS = {"first": "first-angle (ISO)", "third": "third-angle (US)"}
+PROJECTIONS = {"auto": "read from the drawing", "first": "first-angle (ISO)", "third": "third-angle (US)"}
 _PROJECTION_SOURCE = {"symbol": "set by the projection symbol on the sheet, which overrides the switch",
                       "labels": "set by the view labels, which override the switch",
-                      "setting": "from the projection switch"}
+                      "setting": "from the projection switch",
+                      "drawing": "read from how the views agree with each other"}
 _FEATURE = re.compile(r"(features|finishes)\[(\d+)\]\.(\w+)")
 _FIELD_WORDS = {"a_mm": "position a", "b_mm": "position b", "diameter_mm": "diameter", "depth_mm": "depth",
                 "width_mm": "width", "length_mm": "length", "angle_deg": "angle", "radius_mm": "size",
@@ -203,18 +205,19 @@ class Studio:
         image = _read_image(path)
         if image is None:
             return None
-        found = sheet_crops(image, session.projection, reader=self.pipe.reader)
-        if found is None:
+        read = read_sheet(image, session.projection, reader=self.pipe.reader, service=self.pipe.reading(),
+                          keep_unnamed=True)
+        if read is None:
             return None
-        sheet, naming, crops = found
         sheet_id, folder = uuid.uuid4().hex[:8], self._sheet_folder(session.id)
         items = []
-        for i, png, face in crops:
-            crop = folder / f"{sheet_id}_{i}.png"
-            crop.write_bytes(png)
-            items.append(Item(uuid.uuid4().hex[:8], str(crop), f"{Path(path).name} · view {i + 1}", face, "drawing",
-                              sheet_id, i))
-        session.sheets[sheet_id] = (path, sheet, naming)
+        for c in read.crops:
+            crop = folder / f"{sheet_id}_{c.view}.png"
+            crop.write_bytes(c.png)
+            items.append(Item(uuid.uuid4().hex[:8], str(crop), f"{Path(path).name} · view {c.view + 1}", c.face,
+                              "drawing", sheet_id, c.view, mm_per_px=read.scale.mm_per_px))
+        read.sheet.warnings += [w for w in read.warnings if w not in read.naming.warnings]
+        session.sheets[sheet_id] = (path, read.sheet, read.naming)
         return items
 
     def _sheet_folder(self, sid: str) -> Path:
@@ -251,7 +254,7 @@ class Studio:
             image = _read_image(path)
             if image is None:  # the upload has expired; its views keep their names
                 continue
-            naming = name_views(sheet, image, projection, reader=self.pipe.reader)
+            naming = choose_naming(sheet, image, projection, reader=self.pipe.reader)
             session.sheets[sheet_id] = (path, sheet, naming)
             _rename(session, sheet_id, naming)
         session.sheet_notes = _sheet_notes(session)
@@ -328,7 +331,7 @@ class Studio:
                           "stop")
                 return Review(False, "capture", bad)
             images.append(ImageInput(data, None if item.face == "auto" else item.face,
-                                     None if item.kind == "auto" else item.kind))
+                                     None if item.kind == "auto" else item.kind, mm_per_px=item.mm_per_px))
         pipe = self.pipe.configured(ai)
         observed = pipe.observe(images, None if reference in (None, "", "none") else reference)
         if isinstance(observed, S.MvAbstain):

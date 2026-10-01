@@ -60,7 +60,7 @@ export function getExamples(): Promise<Example[]> {
  * of one photo per face; `faces`/`kinds`/`reference` are ignored server-side in that mode. */
 export async function startAnalysis(
   files: File[], faces: string[], kinds: string[], reference: string, ai?: Partial<AiSettings>,
-  mode: 'photos' | 'sheet' = 'photos', projection: 'first' | 'third' = 'first',
+  mode: 'photos' | 'sheet' = 'photos', projection: 'auto' | 'first' | 'third' = 'auto',
 ): Promise<string> {
   const fd = new FormData();
   for (const f of files) fd.append('files', f, f.name);

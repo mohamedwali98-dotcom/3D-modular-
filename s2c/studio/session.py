@@ -28,6 +28,7 @@ class Item:
     sheet_id: str | None = None  # the drawing sheet this view was cut from
     view: int | None = None      # ... and its index among the part drawing's views
     hand_face: bool = False      # the user picked the face: the projection switch never renames it
+    mm_per_px: float | None = None  # the sheet's scale from its dimensions, in the crop's pixels
 
 
 @dataclass
@@ -45,7 +46,7 @@ class Session:
     shown: dict[str, float | None] = field(default_factory=dict)
     part: Part | None = None
     exported: ExportResult | None = None
-    projection: str = "first"
+    projection: str = "auto"
     sheets: dict[str, tuple] = field(default_factory=dict)  # sheet id -> (image path, Sheet, Naming)
     sheet_notes: list[str] = field(default_factory=list)
     touched: float = field(default_factory=time.time)

@@ -14,8 +14,8 @@ const FACE_LABELS: Record<Face, string> = { front: 'Front', back: 'Back', left: 
 const KINDS: CaptureKind[] = ['auto', 'sketch', 'photo', 'drawing'];
 const MODES: CaptureMode[] = ['photos', 'sheet'];
 const MODE_LABELS: Record<CaptureMode, string> = { photos: 'Per-face photos', sheet: 'One sheet (all views)' };
-const PROJECTIONS: Projection[] = ['first', 'third'];
-const PROJECTION_LABELS: Record<Projection, string> = { first: 'First-angle', third: 'Third-angle' };
+const PROJECTIONS: Projection[] = ['auto', 'first', 'third'];
+const PROJECTION_LABELS: Record<Projection, string> = { auto: 'Auto', first: 'First-angle', third: 'Third-angle' };
 
 const panel: CSSProperties = {
   borderRadius: 14, background: 'var(--surface)', boxShadow: 'var(--shadow)', padding: '16px 18px',
@@ -273,7 +273,7 @@ export function Capture() {
               <Segmented options={PROJECTIONS} labels={PROJECTION_LABELS} value={state.projection}
                 onChange={(projection) => dispatch({ type: 'SET_PROJECTION', projection })} ariaLabel="Projection" />
               <span style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4 }}>
-                First-angle (ISO, Europe) puts the top view below the front; third-angle (US) puts it above. A projection symbol or the
+                Auto reads it from how the views agree (ISO first-angle when they agree both ways). First-angle puts the top view below the front, the left view on its right; third-angle (US) puts the top view above. A projection symbol or the
                 view labels on your sheet take precedence.
               </span>
             </div>

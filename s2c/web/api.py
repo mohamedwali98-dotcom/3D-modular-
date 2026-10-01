@@ -138,11 +138,11 @@ def _tag(items: list, i: int) -> str | None:
 def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None,
             faces: Annotated[str, Form()] = "[]", kinds: Annotated[str, Form()] = "[]",
             reference: Annotated[str | None, Form()] = None, ai: Annotated[str | None, Form()] = None,
-            mode: Annotated[str, Form()] = "photos", projection: Annotated[str, Form()] = "first") -> dict:
+            mode: Annotated[str, Form()] = "photos", projection: Annotated[str, Form()] = "auto") -> dict:
     files = files or []
     if mode not in ("photos", "sheet"):
         raise HTTPException(400, "Unknown capture mode.")
-    if projection not in ("first", "third"):
+    if projection not in ("auto", "first", "third"):
         raise HTTPException(400, "Unknown projection.")
     if (reference or "") not in ("", *REFERENCES):
         raise HTTPException(400, "Unknown scale reference.")

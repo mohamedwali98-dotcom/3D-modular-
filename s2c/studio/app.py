@@ -23,7 +23,8 @@ from s2c.studio.theme import CSS, THEME, card
 NOTE = ("**Photos of real parts:** shoot straight on, the part lying flat on a plain surface, with a coin, a card or "
         "an A4 sheet in frame. **Sketches:** dark pen on white paper, one face per sheet, sizes in mm. "
         "**Drawing sheets:** drop the whole sheet; its views are split and named, and you type the sizes.")
-PROJECTION_CHOICES = [("First-angle (ISO)", "first"), ("Third-angle (US)", "third")]
+PROJECTION_CHOICES = [("Auto (read from the drawing)", "auto"), ("First-angle (ISO)", "first"),
+                      ("Third-angle (US)", "third")]
 TEMPERATURES = "PLA 210/60 · PETG 240/80 · ABS 250/100 · ASA 255/100 · TPU 225/50 °C"
 PATTERNS = ["grid", "gyroid", "rectilinear", "honeycomb", "cubic", "lightning"]
 
@@ -90,7 +91,7 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
                         sheet_card = gr.HTML()
                         reference = gr.Dropdown(REFERENCES, value="none", label="Reference object in the photos",
                                                 info="Gives real millimetres from a photo")
-                        projection = gr.Radio(PROJECTION_CHOICES, value="first", label="Projection of drawing sheets",
+                        projection = gr.Radio(PROJECTION_CHOICES, value="auto", label="Projection of drawing sheets",
                                               info="A projection symbol on the sheet overrides this")
                         gr.Markdown(NOTE)
                         with gr.Row():

@@ -423,3 +423,28 @@ def test_analyze_sheet_mode_uses_the_projection_switch(monkeypatch):
     assert faces["first"] != faces["third"]
     assert c.post("/api/analyze", files=[("files", ("s.png", png, "image/png"))],
                   data={"mode": "sheet", "projection": "sideways"}).status_code == 400
+
+
+def test_a_dimensioned_sheet_builds_with_no_typed_size(monkeypatch):
+    """Auto projection, the dimensions read: the analysis ends ready to build, every size measured."""
+    import cv2
+
+    from tests.line_views import WordReader, drawing_sheet
+    from tests.test_mv_relief import _block, _cut
+    monkeypatch.setattr("s2c.sketch.read_sketch", lambda image_bytes: _fake_sheet_reading(), raising=False)
+    img, _, words = drawing_sheet(_cut(_block(), 0, 40, 50, 15, 60, 70), faces=("front", "top", "right"),
+                                  layout="third", iso=True)
+    app.dependency_overrides[get_pipeline] = lambda: MvPipeline(reader=WordReader(words))
+    try:
+        r = c.post("/api/analyze", files=[("files", ("s.png", cv2.imencode(".png", img)[1].tobytes(), "image/png"))],
+                   data={"mode": "sheet"})
+        job = _wait(r.json()["job_id"])
+    finally:
+        app.dependency_overrides[get_pipeline] = lambda: MvPipeline()
+    assert job["status"] == "done", job
+    assert {i["face"] for i in job["images"]} == {"front", "top", "right"}
+    assert "third-angle" in job["stages"][0]["detail"]
+    spec = job["result"]["spec"]
+    assert spec and job["result"]["abstain"] is None, job["result"]
+    assert spec["provenance"]["envelope.x_mm"] == "measured"
+    assert abs(spec["envelope"]["x_mm"] - 80) < 1.5

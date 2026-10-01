@@ -28,7 +28,8 @@ from s2c.multiview.sheet import (
 log = logging.getLogger(__name__)
 
 CROP_MARGIN = 0.04
-CLEARLY = 0.9        # the other projection must leave at most this share of the line mismatch to win
+EXPLAINED = 0.15     # a projection that leaves at most this line mismatch explains the drawing...
+MARGIN = 0.3         # ...and wins when the other leaves at least this much more; otherwise ISO first-angle stays
 
 
 @dataclass
@@ -54,14 +55,15 @@ class SheetRead:
         return [ImageInput(c.png, c.face, "drawing", mm_per_px=self.scale.mm_per_px) for c in self.crops]
 
 
-def _crops(sheet: Sheet, image: np.ndarray, naming: Naming) -> list[SheetCrop]:
+def _crops(sheet: Sheet, image: np.ndarray, naming: Naming, keep_unnamed: bool = False) -> list[SheetCrop]:
     """Each named view's body only, on white, at the sheet's scale, with a small margin. Views that stay "auto" (an
-    isometric picture, an unnamed view) are left out: the web app has no face picker, and a guess is never made."""
+    isometric picture, an unnamed view) are left out unless `keep_unnamed` (the Studio, which has a face picker):
+    a face is never guessed."""
     ink = ink_mask(image)
     long = max(image.shape[:2])
     out = []
     for i, (view, face) in enumerate(zip(sheet.drawings[naming.drawing].views, naming.faces, strict=True)):
-        if face in (SKIP, "auto"):
+        if face == SKIP or (face == "auto" and not keep_unnamed):
             continue
         (x, y, w, h), mask = view_body(ink, view.box, long)
         keep = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
@@ -127,23 +129,31 @@ def _choose(sheet: Sheet, image: np.ndarray, reader) -> Naming:
         return third if third.projection_source != "setting" else first
     a, b = _mismatch(sheet, image, first), _mismatch(sheet, image, third)
     log.info("projection mismatch: first %s, third %s", a, b)
-    if a is not None and b is not None and b < CLEARLY * a and a - b > 0.05:
+    if a is None or b is None:
+        return first
+    if b <= EXPLAINED and a - b >= MARGIN:
         third.projection_source = "drawing"
         third.warnings.append("Read as third-angle (US): the views agree with each other that way.")
         return third
-    if a is not None and b is not None and a < CLEARLY * b and b - a > 0.05:
+    if a <= EXPLAINED and b - a >= MARGIN:
         first.projection_source = "drawing"
     return first
 
 
-def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, service=None) -> SheetRead | None:
+def choose_naming(sheet: Sheet, image: np.ndarray, projection: str, reader=None) -> Naming:
+    """Name the views: "auto" lets the drawing choose the projection, "first" or "third" set it."""
+    return _choose(sheet, image, reader) if projection == "auto" else name_views(sheet, image, projection, reader)
+
+
+def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, service=None,
+               keep_unnamed: bool = False) -> SheetRead | None:
     """The sheet read end to end, or None when the image is not a sheet of line-drawn views. `projection` is
     "auto" (the drawing decides), "first" or "third" (a symbol or labels still win)."""
     image = image_bgr if image_bgr.ndim == 3 else cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
     sheet = split_sheet(image)
     if not is_sheet(sheet):
         return None
-    naming = _choose(sheet, image, reader) if projection == "auto" else name_views(sheet, image, projection, reader)
+    naming = choose_naming(sheet, image, projection, reader)
     if named_count(naming) < 2:
         return None
     ink = ink_mask(image)
@@ -151,7 +161,7 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
     if all(round_view(ink, v.box) for v, f in zip(views, naming.faces, strict=True) if f not in ("auto", SKIP)):
         return None
     warnings = list(naming.warnings)
-    if any(f == "auto" for f in naming.faces):
+    if any(f == "auto" for f in naming.faces) and not keep_unnamed:
         warnings.append("A view that could not be named (an isometric picture, a detail) was left out; it is "
                         "only a picture of the part.")
     ink, bodies = _bodies(sheet, image)
@@ -159,7 +169,7 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
     warnings += scale.warnings
     if scale.mm_per_px:
         warnings.append(f"Sizes read from the drawing's dimensions ({len(scale.used)} used); check them.")
-    return SheetRead(sheet, naming, _crops(sheet, image, naming), scale, warnings)
+    return SheetRead(sheet, naming, _crops(sheet, image, naming, keep_unnamed), scale, warnings)
 
 
 def link_diameters(read: SheetRead, observed) -> None:
