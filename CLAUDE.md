@@ -64,15 +64,16 @@ One OpenAI-compatible client. Configure with `VLM_BASE_URL`, `VLM_MODEL`, `VLM_A
 - Never commit API keys. `.env` is ignored; `.env.example` lists the variables.
 - No secrets, images of people, or personal data in `tests/`.
 
-## Current state (2026-09-26)
+## Current state (2026-10-01)
 
-- **Branches.** `geometry/studio-ui` was merged into `main` (PR #12) on 2026-09-26. Work after that merge sits on `geometry/studio-ui` and needs a new PR. `main` also holds the single-view modules (`s2c/partspec/`, `merge.py`, `pipeline.py`, `vision/`) and CI.
+- **Repository.** Since 2026-10-01 the project is pushed to `https://github.com/mohamedwali98-dotcom/3D-modular-` (git remote `modular`, branch `main`); the old team repo (`origin`) is only read. `main` also holds the single-view modules (`s2c/partspec/`, `merge.py`, `pipeline.py`, `vision/`) and CI.
 - **What exists.** The multi-view path (`s2c/multiview/`, `s2c/studio/`, `app_mv_studio.py`) is built and tested.
 - **Accuracy.** The reverse-engineering benchmark (`scripts/re_benchmark.py`, dataset kept outside git) covers 400 reference parts: 95 % built, median volume error 10.3 %, median 3D IoU 0.91 (clean renders, true size given). Phone photos are still unmeasured.
 - **Drawing sheets (2026-09-27).** One uploaded image with several orthographic views (ISO first-angle by default, third-angle switch, projection symbol and labels read) is split, named and built: `s2c/multiview/sheet.py`, line-drawing rules in `outline.py`, hole-or-edge in `fuse.py`. Spec and plan in `docs/superpowers/`. Sheet benchmark: 44 parts, all built and named, median 3D IoU 0.89.
 - **Rule 2.** Resolved for the multi-view path: the vision model's hole depths and blind flags no longer reach geometry, and only Solaria or the user makes a hole blind.
+- **Complex parts (2026-10-01).** Line drawings are read past their outlines: `s2c/multiview/relief.py` carves notches, steps, pockets and windows from the inner and hidden lines (`FacePocket`), and pins become round bosses (`FaceBoss`). Spec: `docs/superpowers/specs/2026-10-01-complex-parts-design.md`. The user approved extending the multi-view contract (`s2c/multiview/spec.py`); the single-view grammar above stays frozen.
 - **Open rule conflicts, waiting for the team decision.**
-  - The multi-view path goes beyond rule 3; it now also builds turned parts as solids of revolution.
+  - The multi-view path goes beyond rule 3; it now also builds turned parts as solids of revolution, and pockets and bosses read from drawings.
   - The Responsible AI lines below are not yet all true in code.
 - **Work before the demo.** The four-track checklist in `docs/superpowers/reviews/2026-09-24-project-review.md`.
 
