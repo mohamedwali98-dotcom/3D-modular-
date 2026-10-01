@@ -42,13 +42,29 @@ def _true(part) -> float:
     return float(part.val().Volume())
 
 
+def _left_in(solid, x0, y0, z0, x1, y1, z1, inset=0.05) -> float:
+    """Material the built part keeps inside a box (shrunk by `inset`): 0 when a notch is fully open."""
+    box = cq.Workplane("XY").box(x1 - x0 - 2 * inset, y1 - y0 - 2 * inset, z1 - z0 - 2 * inset, centered=False)
+    return volume(solid.intersect(box.translate((x0 + inset, y0 + inset, z0 + inset))))
+
+
 def test_a_corner_notch_is_read_and_built():
     part = _cut(_block(), 0, 40, 50, 15, 60, 70)
     spec = _spec(part)
     (p,) = _pockets(spec)
     assert p.face in ("front", "top", "left")
-    assert volume(build(spec)) == pytest.approx(_true(part), rel=0.03)
+    built = build(spec)
+    assert volume(built) == pytest.approx(_true(part), rel=0.03)
     assert any("notch" in w for w in spec.warnings)
+    assert _left_in(built, 0.6, 40.6, 50.6, 14.4, 60, 70) < 1.0  # no skin left where the notch opens
+
+
+def test_a_notch_under_pins_leaves_no_skin():
+    """Pins make the envelope taller than the block, so the notch's top is not the envelope's: snapping its size to
+    0.5 mm must not leave a sliver of the block's top over it."""
+    part = _pins(_cut(_block(80, 60.8, 70), 0, 40, 50, 15, 60.8, 70), top=60.8)
+    built = build(_spec(part))
+    assert _left_in(built, 0.6, 40.6, 50.6, 14.4, 60.8, 70) < 1.0
 
 
 def test_a_slot_across_the_top_front_is_read():

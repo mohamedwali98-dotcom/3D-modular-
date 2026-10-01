@@ -11,7 +11,6 @@ from s2c.multiview import spec as S
 from s2c.multiview.ocr import Linked, Reading
 from s2c.multiview.outline import PixelOutline, to_face_mm
 from s2c.multiview.raster import iou, outline_mask
-from s2c.multiview.turned import _extents
 
 CLEARANCE_CLASSES = {  # ISO 273 clearance holes for M2, M2.5, M3, M4, M5, M6, M8, M10
     "fine": (2.2, 2.7, 3.2, 4.3, 5.3, 6.4, 8.4, 10.5),
@@ -332,9 +331,18 @@ def _widths(g: Observation, s: str, look: str, env: S.Envelope) -> list[tuple[fl
     length = env.length(look)
     at = poly[_corners(g.outline.outer), 0]
     hs = np.unique(np.concatenate([at - STATION * length, at + STATION * length]))
-    lo, hi = _extents(poly, hs[(hs > 0) & (hs < length)])
     half = g.stroke * (sa if s == S.FACE_AXES[g.face][0] else sb) / 2
-    return [(float(a) + half, float(b) - half) for a, b in zip(lo, hi) if np.isfinite(a) and np.isfinite(b)]
+    return [(lo + half, hi - half) for h in hs[(hs > 0) & (hs < length)] for lo, hi in _intervals(poly, h)]
+
+
+def _intervals(poly: np.ndarray, h: float) -> list[tuple[float, float]]:
+    """The pieces of solid where the line `look` = h crosses the closed outline: two pins side by side are two
+    pieces, each as wide as its pin, not one span from the first to the last. poly rows are (look, s)."""
+    h1, t1 = poly[:, 0], poly[:, 1]
+    h2, t2 = np.roll(h1, -1), np.roll(t1, -1)
+    cross = (np.minimum(h1, h2) < h) & (h <= np.maximum(h1, h2))
+    ts = np.sort(t1[cross] + (t2[cross] - t1[cross]) * (h - h1[cross]) / (h2[cross] - h1[cross]))
+    return [(float(ts[k]), float(ts[k + 1])) for k in range(0, len(ts) - 1, 2)]
 
 
 def _verdict(o: Observation, i: int, others: list[Observation], env: S.Envelope) -> tuple[str, str | None]:

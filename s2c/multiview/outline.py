@@ -188,7 +188,7 @@ def _ring(ink: np.ndarray, c: PixelCircle, stroke: float) -> float:
     radii = np.arange(max(1.0, c.d / 2 - stroke), RING_SPAN * c.d / 2, 0.5)
     if len(radii) < 4:
         return 0.0
-    mids = []
+    mids, outs = [], []
     for t in np.linspace(0, 2 * np.pi, 64, endpoint=False):
         xs = np.round(c.cx + radii * np.cos(t)).astype(int)
         ys = np.round(c.cy + radii * np.sin(t)).astype(int)
@@ -197,6 +197,11 @@ def _ring(ink: np.ndarray, c: PixelCircle, stroke: float) -> float:
         on[ok] = ink[ys[ok], xs[ok]] > 0
         edges = np.flatnonzero(np.diff(on.astype(np.int8)))  # where ink starts or stops along the ray
         starts = [e + 1 for e in edges if not on[e] and on[e + 1]]
+        gap = max(6, round(stroke))  # samples of 0.5 px: white this long ends the band of ink around c
+        own_end = next((e for e in edges if on[e] and not on[e + 1] and radii[e] >= c.d / 2
+                        and not on[e + 1: e + 1 + gap].any()), None)
+        if own_end is not None:
+            outs.append(radii[own_end])
         if on[0]:  # inside c's own line: its end comes first, the next start is the ring
             starts = [s for s in starts if s > (edges[0] if len(edges) else len(on))]
         else:
@@ -207,6 +212,9 @@ def _ring(ink: np.ndarray, c: PixelCircle, stroke: float) -> float:
         stop = stops[0] if stops else len(on) - 1
         mids.append((radii[starts[0]] + radii[stop]) / 2)
     if len(mids) < RING_HITS * 64:
+        # two circles a line apart print as one thick line (a small view, a screenshot): its outer edge is the ring
+        if len(outs) >= RING_HITS * 64 and np.median(outs) - c.d / 2 > 1.2 * stroke:
+            return 2 * (float(np.median(outs)) - stroke / 2)
         return 0.0
     r = float(np.median(mids))
     if np.percentile(np.abs(np.array(mids) - r), 85) > max(2.0, RING_SPREAD * r):

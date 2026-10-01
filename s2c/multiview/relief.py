@@ -328,9 +328,31 @@ def _open_face(box, occ: np.ndarray) -> str | None:
     return None if best is None else best[1]
 
 
-def _pocket(box, face: str, grid: dict[str, np.ndarray], env: S.Envelope) -> dict:
+def _extents(box, carved: np.ndarray, grid: dict[str, np.ndarray], env: S.Envelope) -> dict[str, tuple[float, float]]:
+    """The box in millimetres, each side that opens onto empty space pushed past it, so rounding the pocket's sizes
+    to 0.5 mm never leaves a skin of the part over the opening."""
+    ext = {}
+    for n, (ax, sl) in enumerate(zip(_AXES, box, strict=True)):
+        lo, hi = float(grid[ax][sl.start]), float(grid[ax][sl.stop])
+        margin = max(1.0, 0.02 * env.length(ax))
+        for end in ("lo", "hi"):
+            beyond = list(box)
+            idx = sl.start - 1 if end == "lo" else sl.stop
+            if 0 <= idx < carved.shape[n]:
+                beyond[n] = slice(idx, idx + 1)
+                if carved[tuple(beyond)].any():
+                    continue  # a wall of the pocket: it stays where the drawing puts it
+            if end == "lo":
+                lo -= margin
+            else:
+                hi += margin
+        ext[ax] = (lo, hi)
+    return ext
+
+
+def _pocket(box, face: str, carved: np.ndarray, grid: dict[str, np.ndarray], env: S.Envelope) -> dict:
     a_axis, a_sign, b_axis, b_sign, d_axis, side = _FRAME[face]
-    ext = {ax: (grid[ax][s.start], grid[ax][s.stop]) for ax, s in zip(_AXES, box, strict=True)}
+    ext = _extents(box, carved, grid, env)
 
     def frame(axis: str, sign: int) -> tuple[float, float]:
         lo, hi = ext[axis]
@@ -382,7 +404,7 @@ def relief(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> tup
     for box in _boxes(occ & ~carved):
         face = _open_face(box, carved)
         if face is not None:
-            pockets.append(_pocket(box, face, grid, env))
+            pockets.append(_pocket(box, face, carved, grid, env))
     if not pockets:
         return [], []
     n = len(pockets)
