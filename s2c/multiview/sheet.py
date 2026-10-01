@@ -711,8 +711,12 @@ def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
         stats[i, cv2.CC_STAT_AREA] >= 0.02 * stats[big, cv2.CC_STAT_AREA]
         and stats[i, 0] < bx + bw and stats[i, 0] + stats[i, 2] > bx
         and stats[i, 1] < by + bh and stats[i, 1] + stats[i, 3] > by)]
-    grown = cv2.dilate(np.isin(labels, keep).astype(np.uint8), np.ones((k + 2, k + 2), np.uint8)) > 0
-    body = filled & grown
+    core = np.isin(labels, keep)
+    grown = cv2.dilate(core.astype(np.uint8), np.ones((k + 2, k + 2), np.uint8)) > 0
+    # only drawn pieces joined to the view: an extension line starts a small gap away from it, so its stub is not
+    _, pieces = cv2.connectedComponents(filled.astype(np.uint8), connectivity=8)
+    joined = np.isin(pieces, np.unique(pieces[core & (pieces > 0)]))
+    body = filled & grown & joined
     ys, xs = np.nonzero(body)
     x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
     return (x + x0, y + y0, x1 - x0 + 1, y1 - y0 + 1), body[y0: y1 + 1, x0: x1 + 1]

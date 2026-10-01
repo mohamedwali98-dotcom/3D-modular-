@@ -17,7 +17,8 @@ from s2c.reading import Crop, ReadingService
 log = logging.getLogger(__name__)
 
 Box = tuple[int, int, int, int]
-LINE_MIN = 0.012     # a dimension line is at least this share of the sheet's long side
+LINE_MIN = 0.025     # a dimension line is at least this share of the sheet's long side (30 px at least),
+                     # longer than a digit's strokes, which must stay text
 WORD_GROW = 0.004    # glyphs closer than this share of the long side are one word
 REACH = 1.6          # a dimension line lies within this many text heights of its value
 AGREE = 0.03         # dimensions agreeing within this share give one scale
@@ -81,7 +82,7 @@ def read_dimensions(image_bgr: np.ndarray, ink: np.ndarray, bodies: list[tuple[B
         return SheetScale(None)
     long = max(ink.shape)
     notes = annotation_ink(ink, bodies)
-    length = max(15, round(LINE_MIN * long))
+    length = max(30, round(LINE_MIN * long))
     h_lines = cv2.morphologyEx(notes, cv2.MORPH_OPEN, np.ones((1, length), np.uint8))
     v_lines = cv2.morphologyEx(notes, cv2.MORPH_OPEN, np.ones((length, 1), np.uint8))
     segs = {"h": _segments(h_lines, "h"), "v": _segments(v_lines, "v")}

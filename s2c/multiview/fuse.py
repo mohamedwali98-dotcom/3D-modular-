@@ -85,8 +85,9 @@ def _envelope_candidates(observations: list[Observation]) -> dict[str, list[_Can
                 r = max(readings, key=_value)
                 prov = "user_written" if r.confirmed else "unconfirmed"
                 cands[axis].append(_Candidate(_value(r), prov, r.confidence, o.face, float(px), axis, r))
-            if o.mm_per_px:
-                cands[axis].append(_Candidate(px * o.mm_per_px, "measured", o.confidence, o.face, float(px), axis))
+            if o.mm_per_px:  # a drawn outline is measured to its line's outside; a dimension, line middle to middle
+                span = px - o.stroke if o.line_art else px
+                cands[axis].append(_Candidate(span * o.mm_per_px, "measured", o.confidence, o.face, float(px), axis))
     return cands
 
 

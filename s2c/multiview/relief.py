@@ -390,20 +390,12 @@ def _square(outline: S.Outline) -> bool:
 def relief(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> tuple[list[dict], list[str]]:
     """FacePocket dicts read from the line-art views' inner lines, and Review warnings. Empty when the drawings hold
     no evidence beyond the hull, or when the reading does not explain them clearly better than the hull."""
-    views = [_View(o.face, _to_mm(o.outline.lines, o.face, env), _to_mm(o.outline.hidden, o.face, env),
-                   [_circle_mm(o, c, env) for c in o.outline.circles])
-             for o in observations if o.line_art and o.outline.lines]
-    if len(views) < 2 or not all(f in outlines for f in S.CANONICAL_FACES):
+    setup = _setup(observations, outlines, env)
+    if isinstance(setup, str):
+        return [], [setup]
+    if setup is None:
         return [], []
-    if not all(_square(outlines[f]) for f in S.CANONICAL_FACES):
-        return [], []
-    grid = _grid(views, outlines, env)
-    if max(len(g) for g in grid.values()) > MAX_GRID:
-        return [], ["The drawing has too many lines to read its notches and pockets; only the outlines are used."]
-    occ = hull_cells(grid, outlines, env)
-    if not occ.any():
-        return [], []
-    evidence = [_evidence(v, grid, env) for v in views]
+    grid, occ, evidence = setup
     carved, start, end = carve(occ, evidence)
     if start <= 0 or (start - end) < MIN_GAIN * start:
         return [], []
@@ -420,6 +412,35 @@ def relief(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> tup
     note = (f"{n} notch{'es' if n > 1 else ''} or pocket{'s' if n > 1 else ''} read from the inner lines of the "
             "drawing; check them in the model.")
     return pockets, [note]
+
+
+def _setup(observations, outlines: dict[str, S.Outline], env: S.Envelope):
+    """(grid, hull cells, evidence per view), a note when the drawing is too busy, or None when relief does not
+    apply: fewer than two line-art views with inner lines, a missing canonical outline, round outlines."""
+    views = [_View(o.face, _to_mm(o.outline.lines, o.face, env), _to_mm(o.outline.hidden, o.face, env),
+                   [_circle_mm(o, c, env) for c in o.outline.circles])
+             for o in observations if o.line_art and o.outline.lines]
+    if len(views) < 2 or not all(f in outlines for f in S.CANONICAL_FACES):
+        return None
+    if not all(_square(outlines[f]) for f in S.CANONICAL_FACES):
+        return None
+    grid = _grid(views, outlines, env)
+    if max(len(g) for g in grid.values()) > MAX_GRID:
+        return "The drawing has too many lines to read its notches and pockets; only the outlines are used."
+    occ = hull_cells(grid, outlines, env)
+    if not occ.any():
+        return None
+    return grid, occ, [_evidence(v, grid, env) for v in views]
+
+
+def mismatch(observations, outlines: dict[str, S.Outline], env: S.Envelope) -> float | None:
+    """How much of the drawn lines the best carving of these views still fails to explain: lower is a more
+    consistent reading. None when relief does not apply. Used to tell first- from third-angle."""
+    setup = _setup(observations, outlines, env)
+    if setup is None or isinstance(setup, str):
+        return None
+    _, occ, evidence = setup
+    return carve(occ, evidence)[2]
 
 
 def _cell_volume(cells: np.ndarray, grid: dict[str, np.ndarray]) -> float:
