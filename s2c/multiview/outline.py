@@ -35,6 +35,9 @@ ROUND_FILL = 0.9           # ...fills this share of its hull...
 SPLIT_FILL = 0.6           # ...and the pieces of one cut by centre lines fill at least this share
 DASH_RUN = 3               # a hidden line is at least this many dashes...
 DASH_MAX = 0.15            # ...each shorter than this share of the view
+RING_SPAN = 1.6            # a concentric ring lies within this many radii of a drawn circle...
+RING_HITS = 0.85           # ...and this share of rays from the centre meets it...
+RING_SPREAD = 0.05         # ...at radii this close (share of the radius): a circle, not other lines
 LINE_MIN = 0.04            # a visible line is at least this share of the view's long side...
 LINE_JOIN = 0.025          # ...and each of its ends meets another line or the outline within this share
 
@@ -44,6 +47,7 @@ class PixelCircle:
     cx: float
     cy: float
     d: float
+    ring: float = 0.0  # diameter of a concentric circle drawn just around it (a pin's tip chamfer, a counterbore)
 
 
 @dataclass
@@ -177,6 +181,39 @@ def _circle(solid: np.ndarray, dx: int, dy: int, stroke: float) -> PixelCircle:
     return PixelCircle(m["m10"] / m["m00"] + dx, m["m01"] / m["m00"] + dy, float(d))
 
 
+def _ring(ink: np.ndarray, c: PixelCircle, stroke: float) -> float:
+    """The diameter of a concentric circle drawn just outside c, line middle to line middle, or 0. Each ray from
+    the centre leaves c's own line, then meets the next line; a ring meets them all at about one radius."""
+    h, w = ink.shape
+    radii = np.arange(max(1.0, c.d / 2 - stroke), RING_SPAN * c.d / 2, 0.5)
+    if len(radii) < 4:
+        return 0.0
+    mids = []
+    for t in np.linspace(0, 2 * np.pi, 64, endpoint=False):
+        xs = np.round(c.cx + radii * np.cos(t)).astype(int)
+        ys = np.round(c.cy + radii * np.sin(t)).astype(int)
+        ok = (xs >= 0) & (xs < w) & (ys >= 0) & (ys < h)
+        on = np.zeros(len(radii), bool)
+        on[ok] = ink[ys[ok], xs[ok]] > 0
+        edges = np.flatnonzero(np.diff(on.astype(np.int8)))  # where ink starts or stops along the ray
+        starts = [e + 1 for e in edges if not on[e] and on[e + 1]]
+        if on[0]:  # inside c's own line: its end comes first, the next start is the ring
+            starts = [s for s in starts if s > (edges[0] if len(edges) else len(on))]
+        else:
+            starts = starts[1:]  # the first start is c's own line
+        if not starts:
+            continue
+        stops = [e for e in edges if on[e] and not on[e + 1] and e >= starts[0]]
+        stop = stops[0] if stops else len(on) - 1
+        mids.append((radii[starts[0]] + radii[stop]) / 2)
+    if len(mids) < RING_HITS * 64:
+        return 0.0
+    r = float(np.median(mids))
+    if np.percentile(np.abs(np.array(mids) - r), 85) > max(2.0, RING_SPREAD * r):
+        return 0.0
+    return 2 * r
+
+
 def _round(points, area: float, fill: float) -> bool:
     """Round by the hull, which a staircase edge of a blown-up drawing does not spoil; an ellipse is no circle."""
     hull = cv2.convexHull(points)
@@ -231,6 +268,8 @@ def _line_art(ink: np.ndarray, fg: np.ndarray, outer, filled: np.ndarray, band: 
             circles.append(_circle(solid, x - k, y - k, stroke))
     circles += _split_circles(pieces, k, min_area, stroke)
     drawn = cv2.bitwise_and(ink, body)
+    for c in circles:
+        c.ring = _ring(drawn, c, stroke)
     return PixelOutline(outer=cv2.approxPolyDP(outer, 2.0, True).reshape(-1, 2), circles=circles, bbox=bbox,
                         circular=circularity(outer) >= CIRCULARITY, shape=(h, w), line_art=True,
                         hidden=find_hidden_lines(drawn, bbox),

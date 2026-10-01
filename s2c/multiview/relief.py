@@ -432,7 +432,10 @@ def bosses(observations, edges: dict[int, set[int]], outlines: dict[str, S.Outli
         _, _, _, _, d_axis, side = _FRAME[o.face]
         length = env.length(d_axis)
         for i in sorted(edges.get(k, ())):
-            a, b, d = _circle_mm(o, o.outline.circles[i], env)
+            c = o.outline.circles[i]
+            a, b, d = _circle_mm(o, c, env)
+            if c.ring:  # a chamfered tip: the outer circle is the pin
+                d *= c.ring / c.d
             centre = S.to_global(o.face, a, b, env)
             heights = []
             for g in S.CANONICAL_FACES:

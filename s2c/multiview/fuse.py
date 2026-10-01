@@ -344,23 +344,25 @@ def _verdict(o: Observation, i: int, others: list[Observation], env: S.Envelope)
     a_axis, b_axis, look = S.FACE_AXES[o.face]
     (a, b), = to_face_mm(np.array([[c.cx, c.cy]]), o.outline.bbox, sa, sb)
     at = S.to_global(o.face, a, b, env)
-    pairs = []  # (view, the axis it shares with o, the circle's diameter along that axis)
+    pairs = []  # (view, the axis it shares with o, the circle's diameter along that axis, and its ring's)
     for g in others:
         s = next(ax for ax in (a_axis, b_axis) if ax in S.FACE_AXES[g.face][:2])
-        pairs.append((g, s, c.d * (sa if s == a_axis else sb)))
-    for g, s, d in pairs:
+        scale = sa if s == a_axis else sb
+        pairs.append((g, s, c.d * scale, c.ring * scale))
+    for g, s, d, _ in pairs:
         tol = HIDDEN_TOL * env.length(s)
         qs = _hidden_along(g, s, look, env)
         low = {k for k, q in enumerate(qs) if abs(q - (at[s] - d / 2)) <= tol}
         high = {k for k, q in enumerate(qs) if abs(q - (at[s] + d / 2)) <= tol}
         if low and high and len(low | high) >= 2:
             return "hole", g.face
-    for g, s, d in pairs:
+    for g, s, d, ring in pairs:
         if g.outline.circular:
             continue  # every chord of a round silhouette is some width, centred on its axis: none is a step
-        if any(abs(hi - lo - d) <= EDGE_TOL * d and abs((hi + lo) / 2 - at[s]) <= EDGE_TOL * d
-               for lo, hi in _widths(g, s, look, env)):
-            return "edge", g.face
+        for size in (d, ring) if ring else (d,):  # a pin with a chamfered tip: its outer circle is the pin
+            if any(abs(hi - lo - size) <= EDGE_TOL * size and abs((hi + lo) / 2 - at[s]) <= EDGE_TOL * size
+                   for lo, hi in _widths(g, s, look, env)):
+                return "edge", g.face
     return "hole", None
 
 

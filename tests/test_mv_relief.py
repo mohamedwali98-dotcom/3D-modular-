@@ -137,3 +137,16 @@ def test_a_block_with_notches_pins_and_a_side_hole():
     kinds = sorted(f.type for f in spec.features)
     assert kinds.count("boss") == 2 and kinds.count("pocket") >= 2, kinds
     assert volume(build(spec)) == pytest.approx(_true(part), rel=0.03)
+
+
+def test_chamfered_pins_drawn_as_two_circles_are_pins():
+    """A pin with a chamfered tip shows two concentric circles from above; the outer one is the pin."""
+    part = _block()
+    for x in (20, 60):
+        pin = cq.Workplane("XZ", origin=(0, 60, 0)).center(x, 15).circle(4).extrude(-6).faces(">Y").chamfer(1.2)
+        part = part.union(pin)
+    spec = _spec(part)
+    pins = [f for f in spec.features if f.type == "boss"]
+    assert len(pins) == 2, spec.warnings
+    assert all(f.diameter_mm == pytest.approx(8, abs=0.6) for f in pins)
+    assert not [f for f in spec.features if f.type == "hole"]
