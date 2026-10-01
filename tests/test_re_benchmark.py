@@ -183,8 +183,8 @@ def test_a_sheet_without_three_named_views_abstains(tmp_path, monkeypatch, stage
     if stage == "split":
         monkeypatch.setattr("s2c.multiview.benchmark.split_sheet", lambda image: Sheet([], image.shape[:2]))
     else:
-        monkeypatch.setattr("s2c.multiview.benchmark.name_views",
-                            lambda sheet, image: Naming(0, ["front", "auto", "auto"], "first", "setting"))
+        monkeypatch.setattr("s2c.multiview.benchmark.choose_naming",
+                            lambda sheet, image, projection: Naming(0, ["front", "auto", "auto"], "first", "setting"))
     row = score_part(ref, MvPipeline(), tmp_path / "out", sheet=True)
     assert row["result"] == f"abstain sheet:{stage}"
     assert row["named_ok"] is False
