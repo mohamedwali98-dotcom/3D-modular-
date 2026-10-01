@@ -77,9 +77,11 @@ Use `docker compose down --volumes` only when you also want to delete the genera
 
 ```bash
 cp .env.example .env            # add a vision model key, see docs/models.md
-uv sync
+uv sync --extra ai --extra trocr  # the extras bring TrOCR, which reads the dimensions written on drawings
 uv run pytest                   # everything green before you start
 ```
+
+A plain `uv sync` leaves the extras out (and removes them if they were there): drawings then still split, name and build, but their dimensions are not read and the sizes must be typed.
 
 **Demo, one port.** Build the web app once, then the API serves it at `/`:
 
@@ -169,7 +171,7 @@ Accuracy numbers, updated as tests land:
 | Coin scale error | pending |
 | OCR value accuracy | pending |
 | Reference parts, multi-view path (400 parts with known STLs, clean renders, true size given; 2026-09-26) | built 95 % (381 of 400), median volume error 10.3 %, median 3D IoU 0.91, 31 % of parts within 5 % volume. Before the fixes of 2026-09-26: 89 %, 15.6 %, 0.87, 21 %. Not a phone-photo number: that is still unmeasured |
-| Drawing sheets (one first-angle line-art sheet per part: front, top and right views, labels on half; 44 reference parts, 4 per category; 2026-09-27) | built 100 % (44 of 44), views named correctly 100 %, median volume error 13.1 %, median 3D IoU 0.89 (same parts per-face: IoU 0.92 on a 6-part check). Weakest: brackets (IoU 0.59) and hinges (0.77), where closed pockets drawn as lines are read as edges |
+| Drawing sheets (one first-angle line-art sheet per part: front, top and right views, labels on half; 44 reference parts, 4 per category; projection on Auto; 2026-10-02) | built 100 % (44 of 44), views named correctly 100 %, median volume error 13.1 %, median 3D IoU 0.895 (0.889 before notches and pockets were read from the inner lines). Hinges 0.77 -> 0.97. Weakest: brackets (IoU 0.59, round outlines, so the inner lines are not read) and one bearing holder whose rendered shading lines read as steps (0.81 -> 0.75) |
 | Median sketch-to-STL latency | pending full-pipeline measurement; one measured vision-model call (`gemma3:4b` via Ollama) took about 17.8 s, logged in `logs/vlm.jsonl` — this is a single sample of model latency only, not a pipeline median |
 
 Reference-part benchmark:
