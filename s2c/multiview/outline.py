@@ -35,6 +35,8 @@ ROUND_FILL = 0.9           # ...fills this share of its hull...
 SPLIT_FILL = 0.6           # ...and the pieces of one cut by centre lines fill at least this share
 DASH_RUN = 3               # a hidden line is at least this many dashes...
 DASH_MAX = 0.15            # ...each shorter than this share of the view
+LINE_MIN = 0.04            # a visible line is at least this share of the view's long side...
+LINE_JOIN = 0.025          # ...and each of its ends meets another line or the outline within this share
 
 
 @dataclass
@@ -54,6 +56,7 @@ class PixelOutline:
     shape: tuple[int, int] = (1, 1)                      # image height, width
     line_art: bool = False                               # a drawing in lines: no openings, circles only
     hidden: list[tuple[str, float, float, float]] = field(default_factory=list)  # see find_hidden_lines
+    lines: list[tuple[str, float, float, float]] = field(default_factory=list)   # see find_visible_lines
 
 
 def resize_long_side(image: np.ndarray, long_side: int = LONG_SIDE) -> np.ndarray:
@@ -227,9 +230,11 @@ def _line_art(ink: np.ndarray, fg: np.ndarray, outer, filled: np.ndarray, band: 
         elif cv2.countNonZero(solid) >= min_area:
             circles.append(_circle(solid, x - k, y - k, stroke))
     circles += _split_circles(pieces, k, min_area, stroke)
+    drawn = cv2.bitwise_and(ink, body)
     return PixelOutline(outer=cv2.approxPolyDP(outer, 2.0, True).reshape(-1, 2), circles=circles, bbox=bbox,
                         circular=circularity(outer) >= CIRCULARITY, shape=(h, w), line_art=True,
-                        hidden=find_hidden_lines(cv2.bitwise_and(ink, body), bbox))
+                        hidden=find_hidden_lines(drawn, bbox),
+                        lines=find_visible_lines(drawn, body, bbox, circles, stroke))
 
 
 def _spurs(filled: np.ndarray, core: np.ndarray, k: int) -> np.ndarray:
@@ -368,6 +373,54 @@ def find_hidden_lines(ink: np.ndarray, bbox) -> list[tuple[str, float, float, fl
                 hidden.append((axis, float(np.clip((pos - across_origin) / across_size, 0, 1)),
                                float(np.clip((a - origin) / size, 0, 1)), float(np.clip((b - origin) / size, 0, 1))))
     return hidden
+
+
+def find_visible_lines(ink: np.ndarray, body: np.ndarray, bbox, circles: list[PixelCircle],
+                       stroke: float) -> list[tuple[str, float, float, float]]:
+    """Long continuous axis-parallel visible edges (complex-parts spec 3), in the format of find_hidden_lines. Circles
+    are erased first; dashes are shorter than a line and vanish; a segment that does not meet another line or the
+    outline at both ends (a centre-line dash) is dropped, since an edge always ends on another edge."""
+    x0, y0, bw, bh = bbox
+    ink = ink.copy()
+    pad = max(2, round(stroke)) + 2
+    for c in circles:
+        cv2.circle(ink, (round(c.cx), round(c.cy)), round(c.d / 2), 0, 2 * pad)
+    length = max(9, round(LINE_MIN * max(bw, bh)))
+    reach = max(pad, LINE_JOIN * max(bw, bh))
+    rim = cv2.subtract(body, cv2.erode(body, np.ones((3, 3), np.uint8)))
+    rim_pts = np.flip(np.argwhere(rim), 1).astype(np.float64)
+    found = []
+    for axis, kernel in (("h", (1, length)), ("v", (length, 1))):
+        runs = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones(kernel, np.uint8))
+        _, _, stats, _ = cv2.connectedComponentsWithStats(runs, connectivity=8)
+        for x, y, w, h, _ in stats[1:]:
+            if axis == "h":
+                found.append(("h", y + h / 2, float(x), float(x + w), (x, y + h / 2), (x + w, y + h / 2)))
+            else:
+                found.append(("v", x + w / 2, float(y), float(y + h), (x + w / 2, y), (x + w / 2, y + h)))
+
+    def meets(pt, own) -> bool:
+        px, py = pt
+        if len(rim_pts) and np.min(np.abs(rim_pts - (px, py)).max(1)) <= reach:
+            return True
+        for other in found:
+            ax, pos, s, e = other[:4]
+            if other is own or ax == own[0]:  # a collinear piece (the next dash of a chain line) is no junction
+                continue
+            u, v = (px, py) if ax == "h" else (py, px)
+            if abs(v - pos) <= reach and s - reach <= u <= e + reach:
+                return True
+        return False
+
+    lines = []
+    for seg in found:
+        if not (meets(seg[4], seg) and meets(seg[5], seg)):
+            continue
+        axis, pos, s, e = seg[:4]
+        size, origin, across_size, across_origin = (bw, x0, bh, y0) if axis == "h" else (bh, y0, bw, x0)
+        lines.append((axis, float(np.clip((pos - across_origin) / across_size, 0, 1)),
+                      float(np.clip((s - origin) / size, 0, 1)), float(np.clip((e - origin) / size, 0, 1))))
+    return lines
 
 
 def to_face_mm(points_px, bbox, sa: float, sb: float) -> list[tuple[float, float]]:
