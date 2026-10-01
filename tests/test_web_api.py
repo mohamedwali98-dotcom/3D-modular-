@@ -403,3 +403,23 @@ def test_analyze_sheet_mode_with_no_views_fails_with_a_remedy(monkeypatch):
               data={"mode": "sheet"})
     job = _wait(r.json()["job_id"])
     assert job["status"] == "failed" and "no views" in job["error"].lower()
+
+
+def test_analyze_sheet_mode_uses_the_projection_switch(monkeypatch):
+    """An unlabelled third-angle sheet is named by the switch: the view above the front is the top."""
+    import cv2
+
+    from tests.sheet_helpers import draw_sheet
+    from tests.test_mv_sheet_name import pick, views
+    monkeypatch.setattr("s2c.sketch.read_sketch", lambda image_bytes: _fake_sheet_reading(), raising=False)
+    img, _ = draw_sheet(pick(views.__wrapped__(), ("front", "top", "right")), layout="third", labels=False)
+    png = cv2.imencode(".png", img)[1].tobytes()
+    faces = {}
+    for projection in ("first", "third"):
+        r = c.post("/api/analyze", files=[("files", ("s.png", png, "image/png"))],
+                   data={"mode": "sheet", "projection": projection})
+        faces[projection] = {i["face"] for i in _wait(r.json()["job_id"])["images"]}
+    assert faces["third"] == {"front", "top", "right"}
+    assert faces["first"] != faces["third"]
+    assert c.post("/api/analyze", files=[("files", ("s.png", png, "image/png"))],
+                  data={"mode": "sheet", "projection": "sideways"}).status_code == 400

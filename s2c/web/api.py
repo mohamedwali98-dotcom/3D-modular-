@@ -138,10 +138,12 @@ def _tag(items: list, i: int) -> str | None:
 def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None,
             faces: Annotated[str, Form()] = "[]", kinds: Annotated[str, Form()] = "[]",
             reference: Annotated[str | None, Form()] = None, ai: Annotated[str | None, Form()] = None,
-            mode: Annotated[str, Form()] = "photos") -> dict:
+            mode: Annotated[str, Form()] = "photos", projection: Annotated[str, Form()] = "first") -> dict:
     files = files or []
     if mode not in ("photos", "sheet"):
         raise HTTPException(400, "Unknown capture mode.")
+    if projection not in ("first", "third"):
+        raise HTTPException(400, "Unknown projection.")
     if (reference or "") not in ("", *REFERENCES):
         raise HTTPException(400, "Unknown scale reference.")
     max_files = 1 if mode == "sheet" else MAX_FILES
@@ -166,7 +168,7 @@ def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None
         pipe = pipe.configured(settings)
     if mode == "sheet":
         job = jobs.new_sheet_job(pipe)
-        if not jobs.start_sheet(job, pipe, ImageInput(datas[0])):
+        if not jobs.start_sheet(job, pipe, ImageInput(datas[0]), projection):
             raise HTTPException(429, BUSY)
         return {"job_id": job.job_id}
     face_tags, kind_tags = _json_list(faces, "faces"), _json_list(kinds, "kinds")

@@ -5,6 +5,8 @@ import { resetDeadline } from '../lib/deadline';
 export type Screen = 'capture' | 'describe' | 'analyzing' | 'review' | 'model';
 export type CaptureKind = 'auto' | 'sketch' | 'photo' | 'drawing';
 export type CaptureMode = 'photos' | 'sheet';
+/** How a drawing sheet lays out its views: ISO first-angle or US third-angle. A projection symbol on the sheet wins. */
+export type Projection = 'first' | 'third';
 export interface CaptureItem { id: string; file: File; url: string; face: Face | 'auto'; kind: CaptureKind }
 /** The images a job was started with, in upload order: job.images[i] is jobItems[i] even after Capture changes. */
 export interface JobItem { url: string; face: Face | 'auto'; kind: CaptureKind }
@@ -12,6 +14,7 @@ export interface JobItem { url: string; face: Face | 'auto'; kind: CaptureKind }
 export interface State {
   screen: Screen;
   mode: CaptureMode;
+  projection: Projection;
   items: CaptureItem[];
   reference: string;
   ai: AiSettings;
@@ -33,6 +36,7 @@ export interface State {
 
 export type Action =
   | { type: 'SET_MODE'; mode: CaptureMode }
+  | { type: 'SET_PROJECTION'; projection: Projection }
   | { type: 'ADD_FILES'; items: CaptureItem[] }
   | { type: 'SET_ITEM'; id: string; patch: Partial<Omit<CaptureItem, 'id'>> }
   | { type: 'REMOVE_ITEM'; id: string }
@@ -62,7 +66,7 @@ export const initialGeometry: GeometrySettings = {
 };
 
 export const initialState: State = {
-  screen: 'capture', mode: 'photos', items: [], reference: '', ai: initialAi, jobId: null, jobItems: [], jobError: null,
+  screen: 'capture', mode: 'photos', projection: 'first', items: [], reference: '', ai: initialAi, jobId: null, jobItems: [], jobError: null,
   job: null, analysis: null, typed: {}, rejected: [], geometry: initialGeometry, model: null, modelSpec: null,
   chat: { messages: [], last: null },
 };
@@ -79,6 +83,8 @@ export function reducer(state: State, action: Action): State {
     case 'SET_MODE':
       // Switching mode changes what one upload means (a face vs. the whole sheet); start the tray over.
       return { ...state, mode: action.mode, items: [] };
+    case 'SET_PROJECTION':
+      return { ...state, projection: action.projection };
     case 'ADD_FILES':
       return { ...state, items: [...state.items, ...action.items].slice(0, MAX_ITEMS) };
     case 'SET_ITEM':

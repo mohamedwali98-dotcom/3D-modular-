@@ -314,7 +314,7 @@ def _sheet_reading(image_bytes: bytes):
     return read_sketch(image_bytes)
 
 
-def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline):
+def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline, projection: str = "first"):
     """(naming, [(view index, PNG crop, face)]) when the image is a clean orthographic drawing sheet, else None,
     so hand sketches still go to the sketch reader."""
     from s2c.multiview.sheet import sheet_crops
@@ -322,7 +322,7 @@ def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline):
     if image is None:
         return None
     try:
-        found = sheet_crops(image, "first", reader=pipe.reader)
+        found = sheet_crops(image, projection, reader=pipe.reader)
     except Exception:
         log.exception("drawing-sheet split failed")
         return None
@@ -339,7 +339,7 @@ def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline):
     return naming, named
 
 
-def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput) -> None:
+def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "first") -> None:
     """One sheet with several views, in place of one photo per face: read it, then join the same
     draw/fuse stages `run()` uses so Review and Model & Export are unchanged."""
     from s2c.web.sketch_adapter import observed_from_sketch
@@ -358,7 +358,7 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput) -> None:
 
     try:
         progress("stage", {"key": "views", "state": "running"})
-        found = _drawn_sheet(image.data, pipe)
+        found = _drawn_sheet(image.data, pipe, projection)
         if found is not None:
             naming, crops = found
             with job.lock:
@@ -445,8 +445,8 @@ def start(job: Job, pipe: MvPipeline, images: list[ImageInput], reference: str |
     return _launch(job, run, (job, pipe, images, reference))
 
 
-def start_sheet(job: Job, pipe: MvPipeline, image: ImageInput) -> bool:
-    return _launch(job, run_sheet, (job, pipe, image))
+def start_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "first") -> bool:
+    return _launch(job, run_sheet, (job, pipe, image, projection))
 
 
 def merge(job: Job, pipe: MvPipeline, user_values: dict, accepted: list, rejected: list) -> dict:

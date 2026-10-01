@@ -4,7 +4,7 @@ import type { AiSettings, Face } from '../api/types';
 import { resetDeadline } from '../components/Shell';
 import { CoverageCube } from '../components/CoverageCube';
 import { StopCard } from '../components/StopCard';
-import { MAX_ITEMS, toCaptureItem, useStore, type CaptureItem, type CaptureKind, type CaptureMode } from '../state/store';
+import { MAX_ITEMS, toCaptureItem, useStore, type CaptureItem, type CaptureKind, type CaptureMode, type Projection } from '../state/store';
 
 const MONO = "'Geist Mono', monospace";
 const SILK = "'Silkscreen', monospace";
@@ -14,6 +14,8 @@ const FACE_LABELS: Record<Face, string> = { front: 'Front', back: 'Back', left: 
 const KINDS: CaptureKind[] = ['auto', 'sketch', 'photo', 'drawing'];
 const MODES: CaptureMode[] = ['photos', 'sheet'];
 const MODE_LABELS: Record<CaptureMode, string> = { photos: 'Per-face photos', sheet: 'One sheet (all views)' };
+const PROJECTIONS: Projection[] = ['first', 'third'];
+const PROJECTION_LABELS: Record<Projection, string> = { first: 'First-angle', third: 'Third-angle' };
 
 const panel: CSSProperties = {
   borderRadius: 14, background: 'var(--surface)', boxShadow: 'var(--shadow)', padding: '16px 18px',
@@ -175,7 +177,7 @@ export function Capture() {
       const files = state.items.map((i) => i.file);
       const faces = state.items.map((i) => i.face);
       const kinds = state.items.map((i) => i.kind);
-      const jobId = await startAnalysis(files, faces, kinds, state.reference, state.ai, state.mode);
+      const jobId = await startAnalysis(files, faces, kinds, state.reference, state.ai, state.mode, state.projection);
       resetDeadline();
       dispatch({ type: 'START_JOB', jobId });
     } catch (e) {
@@ -266,6 +268,13 @@ export function Capture() {
               <span style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4 }}>
                 We find the views drawn on your sheet, classify the lines and read the numbers you wrote — then the
                 same review and export screens a per-face photo uses.
+              </span>
+              <span style={sectionTitle}>Projection</span>
+              <Segmented options={PROJECTIONS} labels={PROJECTION_LABELS} value={state.projection}
+                onChange={(projection) => dispatch({ type: 'SET_PROJECTION', projection })} ariaLabel="Projection" />
+              <span style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.4 }}>
+                First-angle (ISO, Europe) puts the top view below the front; third-angle (US) puts it above. A projection symbol or the
+                view labels on your sheet take precedence.
               </span>
             </div>
           ) : (
