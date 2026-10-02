@@ -745,13 +745,23 @@ def _thin_lines(sub: np.ndarray) -> np.ndarray:
             rw, rh = int(stats[i, 2]), int(stats[i, 3])
             along, thick = (rw, rh) if axis == "h" else (rh, rw)
             runs.append((labels, i, along, thick, size))
-    long_runs = [t for _, _, along, t, size in runs if along >= 0.5 * size]
+    long_runs = [(t, along) for _, _, along, t, size in runs if along >= 0.5 * size]
     if not long_runs:
         return np.zeros_like(u8)
-    outline = max(long_runs)
+    # the outline's weight: what most of the long run length is drawn in (two lines merged side by side make a
+    # run look thick, so never the thickest run)
+    order = sorted(long_runs)
+    total, acc, outline = sum(a for _, a in order), 0, order[-1][0]
+    for t, a in order:
+        acc += a
+        if acc >= 0.75 * total:
+            outline = t
+            break
     out = np.zeros_like(u8)
+    if outline < 3:  # a 1 or 2 px drawing has one weight: 1 px against 2 px is how a raster draws a line, not a type
+        return out
     for labels, i, _, thick, _ in runs:
-        if thick <= 0.6 * outline:
+        if thick <= 0.5 * outline:
             out[labels == i] = 1
     return out
 
