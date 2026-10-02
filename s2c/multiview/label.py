@@ -56,7 +56,7 @@ def prompt_schema() -> dict:
     return schema
 
 
-def _strip_fences(text: str) -> str:
+def strip_fences(text: str) -> str:
     t = text.strip()
     if t.startswith("```"):
         t = t.split("\n", 1)[1] if "\n" in t else ""
@@ -77,7 +77,7 @@ def label_image(image_bytes: bytes, chat: Chat, face_hint: str | None = None,
     for _ in range(2):
         raw = chat(messages)
         try:
-            label = MvLabel.model_validate_json(_strip_fences(raw))
+            label = MvLabel.model_validate_json(strip_fences(raw))
             break
         except (ValidationError, ValueError) as e:
             messages += [{"role": "assistant", "content": raw},

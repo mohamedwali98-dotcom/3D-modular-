@@ -267,9 +267,9 @@ def test_the_sheet_example_builds(studio):
 
 def test_a_hand_sketch_photo_is_split_into_named_faces_and_renamed_on_its_page(studio, tmp_path):
     """A phone photo of a pen sketch: one item per face; the projection switch renames them on the sketch's page."""
+    from tests.builders import solid_block
     from tests.hand_views import hand_photo
-    from tests.test_mv_relief import _block
-    photo, _ = hand_photo(_block(), faces=("front", "top", "right"), layout="third")
+    photo, _ = hand_photo(solid_block(), faces=("front", "top", "right"), layout="third")
     sid = studio.store.new()
     studio.set_projection(sid, "third")
     studio.add_images(sid, [save(tmp_path, photo, "sketch.jpg")])

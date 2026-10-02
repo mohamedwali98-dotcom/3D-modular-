@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from s2c.store import _SAFE, FileStore
+from s2c.store import SAFE, FileStore
 
 
 def test_put_and_get(tmp_path):
@@ -170,4 +170,4 @@ def test_identifier_pattern_rejects_trailing_newline():
     strict allowlist. The pattern must use the strict end-of-string anchor
     instead."""
     candidate = ("a" * 32) + ".stl\n"
-    assert _SAFE.match(candidate) is None
+    assert SAFE.match(candidate) is None

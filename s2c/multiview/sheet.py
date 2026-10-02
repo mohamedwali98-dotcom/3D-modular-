@@ -83,7 +83,7 @@ def split_sheet(image_bgr: np.ndarray) -> Sheet:
     """The drawings and views of one image. An image with no drawing of 2 or more views is not a sheet."""
     ink = ink_mask(image_bgr)
     h, w = ink.shape
-    _remove_border(ink)
+    remove_border(ink)
     cuts = _cut_separators(ink)
     k = max(3, round(DILATE * max(h, w)))
     grown = cv2.dilate(ink, np.ones((k, k), np.uint8))
@@ -118,7 +118,7 @@ def split_by_outlines(image_bgr: np.ndarray, stroke_px: float) -> Sheet:
 
     ink = ink_mask(image_bgr)
     h, w = ink.shape
-    _remove_border(ink)
+    remove_border(ink)
     k = round(MEND * max(1.0, stroke_px)) | 1
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, kernel)
@@ -284,7 +284,7 @@ def ink_mask(image_bgr: np.ndarray) -> np.ndarray:
     return np.where(diff > INK_DELTA, 255, 0).astype(np.uint8)
 
 
-def _remove_border(ink: np.ndarray) -> None:
+def remove_border(ink: np.ndarray) -> None:
     """Erase a sheet frame: near all four sides, thin, and inked along every side of its box. Thin means under
     BORDER_FILL of its box, or nearly all ink in a narrow band along the box edges: on a small sheet the frame's
     stroke alone inks over BORDER_FILL."""

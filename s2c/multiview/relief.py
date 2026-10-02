@@ -227,7 +227,7 @@ def _covered(segs: list[Seg], axis: str, at: np.ndarray, span: np.ndarray, tol: 
 
 
 @dataclass
-class _Evidence:
+class ReliefEvidence:
     face: str
     obs_v: np.ndarray    # drawn visible on vertical grid edges (na + 1, nb)
     obs_h: np.ndarray    # (na, nb + 1)
@@ -237,7 +237,7 @@ class _Evidence:
     w_h: np.ndarray
 
 
-def _evidence(view: _View, grid: dict[str, np.ndarray], env: S.Envelope) -> _Evidence:
+def _evidence(view: _View, grid: dict[str, np.ndarray], env: S.Envelope) -> ReliefEvidence:
     a_axis, a_sign, b_axis, b_sign, _, _ = _FRAME[view.face]
     a_len, b_len = env.length(a_axis), env.length(b_axis)
     # grid lines in this face's frame, growing with a and b
@@ -255,10 +255,10 @@ def _evidence(view: _View, grid: dict[str, np.ndarray], env: S.Envelope) -> _Evi
         in_b = (B >= b - d / 2 - tb) & (B <= b + d / 2 + tb)
         w_v[np.ix_(in_a, in_b[:-1] & in_b[1:])] = 0
         w_h[np.ix_(in_a[:-1] & in_a[1:], in_b)] = 0
-    return _Evidence(view.face, obs_v, obs_h, hid_v, hid_h, w_v, w_h)
+    return ReliefEvidence(view.face, obs_v, obs_h, hid_v, hid_h, w_v, w_h)
 
 
-def _cost(occ: np.ndarray, ev: _Evidence) -> float:
+def _cost(occ: np.ndarray, ev: ReliefEvidence) -> float:
     vis_v, hid_v, vis_h, hid_h = predicted(occ, ev.face)
     miss_v = (vis_v != ev.obs_v) | (ev.hid_v & ~vis_v & ~hid_v & ~ev.obs_v)
     miss_h = (vis_h != ev.obs_h) | (ev.hid_h & ~vis_h & ~hid_h & ~ev.obs_h)
@@ -267,7 +267,7 @@ def _cost(occ: np.ndarray, ev: _Evidence) -> float:
     return float(cost_v.sum() + cost_h.sum())
 
 
-def _regions(ev: _Evidence) -> list[np.ndarray]:
+def _regions(ev: ReliefEvidence) -> list[np.ndarray]:
     """Cells of the view (na, nb) split by its drawn visible lines: each region is a candidate face to carve."""
     na, nb = ev.obs_h.shape[0], ev.obs_v.shape[1]
     label = -np.ones((na, nb), int)
@@ -302,7 +302,7 @@ def _one_piece(occ: np.ndarray) -> bool:
     return n == 1
 
 
-def carve(occ: np.ndarray, evidence: list[_Evidence]) -> tuple[np.ndarray, float, float, np.ndarray]:
+def carve(occ: np.ndarray, evidence: list[ReliefEvidence]) -> tuple[np.ndarray, float, float, np.ndarray]:
     """Greedy carving from the viewer's side, region by region. Returns the cells, the start and end cost, and the
     cells removed by a cut that only its own view asked for: how deep such a cut goes, no other view says."""
     def costs(o: np.ndarray) -> list[float]:

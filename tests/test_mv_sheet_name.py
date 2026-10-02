@@ -16,7 +16,7 @@ from s2c.multiview.sheet import (
 )
 from s2c.multiview.spec import Envelope
 from tests.mv_helpers import box_mesh, make_spec, outline
-from tests.sheet_helpers import LABELS, _draw_symbol, draw_sheet, part_views, relabel
+from tests.sheet_helpers import LABELS, draw_sheet, draw_symbol, part_views, relabel
 
 ENV = Envelope(x_mm=80.0, y_mm=60.0, z_mm=40.0)
 FIVE = ("front", "top", "right", "left", "back")
@@ -188,7 +188,7 @@ def test_a_symbol_drawn_with_centre_lines_is_still_the_symbol(views):
 @pytest.mark.parametrize("size, line, centre_lines", [(40, 2, True), (60, 3, True), (130, 1, False), (130, 2, True)])
 def test_symbols_of_any_size_and_stroke_are_found(size, line, centre_lines):
     ink = np.zeros((size + 60, 3 * size + 60), np.uint8)
-    _draw_symbol(ink, "third", 30, 30, size, line, centre_lines)
+    draw_symbol(ink, "third", 30, 30, size, line, centre_lines)
     img = cv2.cvtColor(255 - ink, cv2.COLOR_GRAY2BGR)
     assert find_symbol(split_sheet(img), img) == (0, "third")
 

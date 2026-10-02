@@ -9,7 +9,7 @@ from itertools import combinations
 import cadquery as cq
 import numpy as np
 
-from s2c.multiview.build import _clean
+from s2c.multiview.build import clean_polygon
 from s2c.multiview.spec import Envelope, MultiViewSpec, Outline, to_global
 
 WARNING = "Built as a turned part around the {axis} axis: its view along that axis is round and both side views match"
@@ -217,4 +217,4 @@ def revolve(spec: MultiViewSpec, axis: str) -> cq.Workplane:
     origin = tuple(0.0 if k == axis else env.length(k) / 2 for k in "xyz")
     x_dir, normal = _PLANES[axis]
     plane = cq.Plane(origin=origin, xDir=x_dir, normal=normal)
-    return cq.Workplane(plane).polyline(_clean(profile(spec, axis))).close().revolve(360, (0, 0, 0), (0, 1, 0))
+    return cq.Workplane(plane).polyline(clean_polygon(profile(spec, axis))).close().revolve(360, (0, 0, 0), (0, 1, 0))

@@ -4,7 +4,7 @@ This module sits behind a public HTTP endpoint that serves a file by the
 identifier a caller supplies, so `path()`'s identifier validation is the
 only thing standing between a caller and reading arbitrary files off the
 machine. It must accept only an identifier the store could itself have
-generated (see `_SAFE`) and reject anything else by returning None -- never
+generated (see `SAFE`) and reject anything else by returning None -- never
 by raising, and never with any signal that would let a caller distinguish a
 rejected identifier from a well-formed but unknown one.
 
@@ -24,7 +24,7 @@ from pathlib import Path
 # rejected before it ever touches the filesystem.
 #
 # `_EXTENSION` is the single source of truth for what a suffix may look
-# like. `_SAFE` (the full identifier, checked by `path()`) and `_SAFE_SUFFIX`
+# like. `SAFE` (the full identifier, checked by `path()`) and `_SAFE_SUFFIX`
 # (the extension alone, checked by `put()`) are both built from it, so the
 # two checks cannot drift apart: anything `put()` accepts is, by
 # construction, something `path()` will later accept back. The end anchor
@@ -33,7 +33,7 @@ from pathlib import Path
 # latent exceptions to its strictness.
 _HEX_ID = r"[a-f0-9]{32}"
 _EXTENSION = r"[a-z0-9]{1,5}"
-_SAFE = re.compile(rf"^{_HEX_ID}\.{_EXTENSION}\Z")
+SAFE = re.compile(rf"^{_HEX_ID}\.{_EXTENSION}\Z")
 _SAFE_SUFFIX = re.compile(rf"^\.{_EXTENSION}\Z")
 
 
@@ -60,7 +60,7 @@ class FileStore:
         return file_id
 
     def path(self, file_id: str) -> Path | None:
-        if not _SAFE.match(file_id):
+        if not SAFE.match(file_id):
             return None
         p = self.root / file_id
         return p if p.exists() else None

@@ -9,17 +9,16 @@ from s2c.multiview import spec as S
 from s2c.multiview.pipeline import MvPipeline
 from s2c.multiview.sheet import split_by_outlines
 from s2c.multiview.sheet_read import link_sizes, page_of, read_drawing, read_sheet
+from tests.builders import add_pins, cut_box, solid_block, word_service
 from tests.hand_views import hand_photo
 from tests.line_views import dimension, drawing_sheet
-from tests.test_mv_relief import _block, _cut, _pins
-from tests.test_mv_sheet_read import _service
 
 THIRD = ("front", "top", "right")
 GOLDEN = Path(__file__).resolve().parent / "golden_sketch"
 
 
 def _part():
-    return _pins(_cut(_cut(_block(), 0, 40, 50, 15, 60, 70), 65, 40, 50, 80, 60, 70), z=20)
+    return add_pins(cut_box(cut_box(solid_block(), 0, 40, 50, 15, 60, 70), 65, 40, 50, 80, 60, 70), z=20)
 
 
 def test_a_clean_drawing_is_used_as_drawn():
@@ -110,8 +109,8 @@ def test_a_hand_sketch_is_read_into_named_faces():
 
 def test_a_clean_drawing_reads_exactly_as_before():
     img, _, words = drawing_sheet(_part(), faces=THIRD, layout="third", iso=True)
-    a = read_sheet(img, "auto", service=_service(words))
-    b = read_drawing(img, "auto", service=_service(words))
+    a = read_sheet(img, "auto", service=word_service(words))
+    b = read_drawing(img, "auto", service=word_service(words))
     assert b.kind == "drawing" and [c.face for c in a.crops] == [c.face for c in b.crops]
     assert a.scale.mm_per_px == b.scale.mm_per_px
 
@@ -130,8 +129,8 @@ def test_a_cad_sheet_with_a_shaded_picture_is_read_as_a_drawing():
     """Grey faces on the isometric picture do not make a drawing a photo: it keeps its scale and its names."""
     img, boxes, words = drawing_sheet(_part(), faces=THIRD, layout="third", iso=True)
     shaded = _shaded_picture(img, boxes["iso"])
-    a = read_sheet(img, "auto", service=_service(words))
-    b = read_drawing(shaded, "auto", service=_service(words))
+    a = read_sheet(img, "auto", service=word_service(words))
+    b = read_drawing(shaded, "auto", service=word_service(words))
     assert b.kind == "drawing" and [c.face for c in b.crops] == [c.face for c in a.crops]
     assert b.scale.confirmed and b.scale.mm_per_px == a.scale.mm_per_px
 
@@ -139,8 +138,8 @@ def test_a_cad_sheet_with_a_shaded_picture_is_read_as_a_drawing():
 def test_a_dark_drawing_is_read_as_a_drawing():
     """Light lines on a dark screen (a dark-theme screenshot) are a drawing, not a photo taken in poor light."""
     img, _, words = drawing_sheet(_part(), faces=THIRD, layout="third", iso=True)
-    a = read_sheet(img, "auto", service=_service(words))
-    b = read_drawing(255 - img, "auto", service=_service(words))
+    a = read_sheet(img, "auto", service=word_service(words))
+    b = read_drawing(255 - img, "auto", service=word_service(words))
     assert b.kind == "drawing" and [c.face for c in b.crops] == [c.face for c in a.crops]
 
 
@@ -165,7 +164,7 @@ def test_the_real_sketch_names_its_three_faces():
 
 
 def test_a_wobbly_notched_block_reads_its_notch():
-    part = _cut(_block(), 0, 40, 50, 15, 60, 70)
+    part = cut_box(solid_block(), 0, 40, 50, 15, 60, 70)
     for seed in range(3):  # three photos: wobble, slant and the dash pattern differ
         photo, _ = hand_photo(part, faces=THIRD, layout="third", seed=seed)
         read = read_drawing(photo, "third")
@@ -176,7 +175,7 @@ def test_a_wobbly_notched_block_reads_its_notch():
 
 
 def test_straightening_keeps_a_hole_round():
-    part = _block().faces(">Z").workplane(centerOption="CenterOfBoundBox").hole(12)
+    part = solid_block().faces(">Z").workplane(centerOption="CenterOfBoundBox").hole(12)
     photo, _ = hand_photo(part, faces=THIRD, layout="third")
     read = read_drawing(photo, "third")
     obs = MvPipeline().observe(read.inputs())
@@ -185,8 +184,8 @@ def test_straightening_keeps_a_hole_round():
 
 
 def test_a_sketch_builds_from_its_written_sizes():
-    photo, words = hand_photo(_block(), faces=THIRD, layout="third")
-    read = read_drawing(photo, "third", service=_service(words))
+    photo, words = hand_photo(solid_block(), faces=THIRD, layout="third")
+    read = read_drawing(photo, "third", service=word_service(words))
     pipe = MvPipeline()
     observed = pipe.observe(read.inputs())
     link_sizes(read, observed)
@@ -196,17 +195,17 @@ def test_a_sketch_builds_from_its_written_sizes():
 
 
 def test_a_sketch_without_numbers_suggests_and_never_measures():
-    photo, _ = hand_photo(_block(), faces=THIRD, layout="third", dims=False)
+    photo, _ = hand_photo(solid_block(), faces=THIRD, layout="third", dims=False)
     read = read_drawing(photo, "third")
     result = MvPipeline().fuse(MvPipeline().observe(read.inputs()))
     assert isinstance(result, S.MvAbstain) and result.stage == "dimensions"
 
 
 def test_a_part_dimension_is_read_but_not_used_as_a_size():
-    part = _cut(_block(), 0, 40, 50, 15, 60, 70)
+    part = cut_box(solid_block(), 0, 40, 50, 15, 60, 70)
     # one more dimension, over the notch's 15 mm width only (front view, along a, above the view)
     photo, words = hand_photo(part, faces=THIRD, layout="third", extra=[("front", 0, 15, "a", "15")])
-    read = read_drawing(photo, "third", service=_service(words))
+    read = read_drawing(photo, "third", service=word_service(words))
     pipe = MvPipeline()
     observed = pipe.observe(read.inputs())
     link_sizes(read, observed)
@@ -218,19 +217,19 @@ def test_a_part_dimension_is_read_but_not_used_as_a_size():
 def test_a_dimension_that_stops_short_of_the_view_is_no_overall_size():
     """A 72 or a 76 written from the left edge of an 80 mm stepped block sizes a part of it: its extension line
     stands inside the view, so it never becomes the part's width (review focus 4)."""
-    part = _cut(_block(), 70, 40, 0, 80, 60, 70)
+    part = cut_box(solid_block(), 70, 40, 0, 80, 60, 70)
     for span in (72, 76):
         photo, words = hand_photo(part, faces=THIRD, layout="third", dims=False,
                                   extra=[("front", 0, span, "a", str(span))])
-        read = read_drawing(photo, "third", service=_service(words))
+        read = read_drawing(photo, "third", service=word_service(words))
         assert [d.text for d in read.scale.dimensions if d.view is not None] == [], span
 
 
 def test_a_sheets_views_are_not_read_again_for_numbers():
     """The numbers of a sheet are read once, on the sheet; a cropped view never reads its stubs and ticks as
     sizes (a "1" from a tick would be a silently wrong size)."""
-    photo, words = hand_photo(_block(), faces=THIRD, layout="third")
-    read = read_drawing(photo, "third", service=_service(words))
+    photo, words = hand_photo(solid_block(), faces=THIRD, layout="third")
+    read = read_drawing(photo, "third", service=word_service(words))
     assert all(not i.numbers for i in read.inputs())
 
 

@@ -7,7 +7,7 @@ import cadquery as cq
 import cv2
 import numpy as np
 
-from tests.line_views import _dashed, dimension, drawing_sheet
+from tests.line_views import dashed_line, dimension, drawing_sheet
 
 PAPER = (230, 233, 235)
 PEN = (70, 30, 20)
@@ -28,7 +28,7 @@ def _miter(ink: np.ndarray, boxes: dict, layout: str) -> None:
     else:                   # the plan view below the front
         y0 = plan[1] - 25
         end = (x0 + length, y0 + length)
-    _dashed(ink, np.array([[x0, y0], end], float), 2, 18, 10)
+    dashed_line(ink, np.array([[x0, y0], end], float), 2, 18, 10)
 
 
 def _extra(ink: np.ndarray, boxes: dict, extra, font) -> list:

@@ -8,7 +8,7 @@ import logging
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
-from s2c.multiview.label import Chat, _strip_fences
+from s2c.multiview.label import Chat, strip_fences
 from s2c.multiview.ocr import BatchReader
 from s2c.reading.tiles import tile_grid
 
@@ -49,7 +49,7 @@ def qwen_batch_reader(chat: Chat) -> BatchReader:
                 log.warning("Qwen-VL read failed: %s", e)
                 return None
             try:
-                parsed = _Reads.model_validate_json(_strip_fences(raw))
+                parsed = _Reads.model_validate_json(strip_fences(raw))
                 bad = [r.i for r in parsed.reads if not 1 <= r.i <= len(crops)]
                 if bad:
                     raise ValueError(f"crop numbers {bad} do not exist; use 1 to {len(crops)}")

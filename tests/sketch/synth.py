@@ -179,7 +179,7 @@ def bridge_block(sh: Sheet, labels: bool = True) -> Sheet:
     return sh
 
 
-def _overlap(a, b) -> float:
+def boxes_overlap(a, b) -> float:
     ax, ay, aw, ah = a
     bx, by, bw, bh = b
     ix = max(0, min(ax + aw, bx + bw) - max(ax, bx))
@@ -201,7 +201,7 @@ class TruthReader:
         for c in crops:
             best, score = "", 0.0
             for s, b in self.texts:
-                ov = _overlap(c.box, b)
+                ov = boxes_overlap(c.box, b)
                 if ov > score:
                     best, score = s, ov
             h, w = c.image.shape[:2]

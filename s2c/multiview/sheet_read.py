@@ -17,12 +17,12 @@ from s2c.multiview.sheet import (
     SKIP,
     Naming,
     Sheet,
-    _remove_border,
     body_of,
     ink_mask,
     is_sheet,
     name_views,
     named_count,
+    remove_border,
     round_view,
     split_by_outlines,
     split_sheet,
@@ -427,7 +427,7 @@ def _read(sheet: Sheet, image: np.ndarray, projection: str, reader, service, kee
         warnings.append("A view that could not be named (an isometric picture, a detail) was left out; it is "
                         "only a picture of the part.")
     ink, bodies = part_bodies(sheet, image, naming)
-    _remove_border(ink)  # the sheet's frame is no dimension line
+    remove_border(ink)  # the sheet's frame is no dimension line
     sketch = sheet.stroke_px is not None
     scale = read_dimensions(image, ink, bodies, service, "sketch" if sketch else "drawing", sheet.stroke_px,
                             to_source)

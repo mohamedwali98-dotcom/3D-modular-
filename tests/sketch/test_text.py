@@ -5,7 +5,7 @@ import pytest
 
 from s2c.sketch.models import SketchAbstain
 from s2c.sketch.text import erase_mask, find_text_boxes, read_texts
-from tests.sketch.synth import Sheet, TruthReader, _overlap, bridge_block
+from tests.sketch.synth import Sheet, TruthReader, boxes_overlap, bridge_block
 
 
 def sheet():
@@ -16,9 +16,9 @@ def test_boxes_cover_every_written_text():
     sh = sheet()
     boxes = find_text_boxes(sh.ink(), 3.0)
     for s, b in sh.texts:
-        assert any(_overlap(box, b) > 0.6 for box in boxes), s
+        assert any(boxes_overlap(box, b) > 0.6 for box in boxes), s
     for box in boxes:  # no box swallows two texts
-        assert sum(_overlap(box, b) > 0.6 for _, b in sh.texts) <= 1
+        assert sum(boxes_overlap(box, b) > 0.6 for _, b in sh.texts) <= 1
 
 
 def test_boxes_stay_tight_around_their_text():
@@ -27,7 +27,7 @@ def test_boxes_stay_tight_around_their_text():
     sh = sheet()
     boxes = find_text_boxes(sh.ink(), 3.0)
     for s, b in sh.texts:
-        found = [box for box in boxes if _overlap(box, b) > 0.6]
+        found = [box for box in boxes if boxes_overlap(box, b) > 0.6]
         assert found, s
         for box in found:
             assert box[2] * box[3] <= 2.5 * b[2] * b[3], (s, b, box)
@@ -47,7 +47,7 @@ def _one_box_keeps_every_glyph(sh):
     """A thin glyph touching a drawn line must not be dropped as line debris."""
     boxes = find_text_boxes(sh.ink(), 3.0)
     for s, b in sh.texts:
-        found = [box for box in boxes if _overlap(box, b) > 0.6]
+        found = [box for box in boxes if boxes_overlap(box, b) > 0.6]
         assert len(found) == 1, (s, b, boxes)
         assert found[0][2] >= 6 and found[0][3] >= 6, (s, found[0])
         assert found[0][0] <= b[0] and found[0][0] + found[0][2] >= b[0] + b[2], (s, b, found[0])
@@ -192,5 +192,5 @@ def test_paddle_detector_finds_the_written_values(monkeypatch):
     sh = sheet()
     monkeypatch.setenv("SKETCH_TEXT_DETECTOR", "paddle")
     boxes = detect_text_boxes(sh.bgr(), sh.ink(), 3.0)
-    found = sum(any(_overlap(box, b) > 0.5 for box in boxes) for _, b in sh.texts)
+    found = sum(any(boxes_overlap(box, b) > 0.5 for box in boxes) for _, b in sh.texts)
     assert found >= 0.9 * len(sh.texts)

@@ -429,10 +429,10 @@ def test_a_dimensioned_sheet_builds_with_no_typed_size(monkeypatch):
     """Auto projection, the dimensions read: the analysis ends ready to build, every size measured."""
     import cv2
 
+    from tests.builders import cut_box, solid_block
     from tests.line_views import WordReader, drawing_sheet
-    from tests.test_mv_relief import _block, _cut
     monkeypatch.setattr("s2c.sketch.read_sketch", lambda image_bytes: _fake_sheet_reading(), raising=False)
-    img, _, words = drawing_sheet(_cut(_block(), 0, 40, 50, 15, 60, 70), faces=("front", "top", "right"),
+    img, _, words = drawing_sheet(cut_box(solid_block(), 0, 40, 50, 15, 60, 70), faces=("front", "top", "right"),
                                   layout="third", iso=True)
     app.dependency_overrides[get_pipeline] = lambda: MvPipeline(reader=WordReader(words))
     try:
@@ -454,13 +454,13 @@ def test_a_hand_sketch_photo_builds_from_its_written_sizes(monkeypatch):
     """A phone photo of a pen sketch in sheet mode: page, faces, labels, numbers; the envelope is the user's own."""
     import cv2
 
+    from tests.builders import solid_block
     from tests.hand_views import hand_photo
     from tests.line_views import WordReader
-    from tests.test_mv_relief import _block
     def no_sketch(image_bytes):
         raise AssertionError("the team's sketch reader must not run when the five steps read the sketch")
     monkeypatch.setattr("s2c.sketch.read_sketch", no_sketch, raising=False)
-    photo, words = hand_photo(_block(), faces=("front", "top", "right"), layout="third")
+    photo, words = hand_photo(solid_block(), faces=("front", "top", "right"), layout="third")
     app.dependency_overrides[get_pipeline] = lambda: MvPipeline(reader=WordReader(words))
     try:
         r = c.post("/api/analyze", files=[("files", ("p.jpg", cv2.imencode(".jpg", photo)[1].tobytes(), "image/jpeg"))],

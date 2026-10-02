@@ -131,9 +131,9 @@ def extract(image_bgr: np.ndarray, mask_out=(), band: int = EDGE_BAND_PX,
     filled = np.zeros_like(fg)
     cv2.drawContours(filled, [outer], -1, 255, -1)
     if line_art:
-        return _line_art(ink, fg, outer, filled, band, _stroke(cv2.bitwise_and(ink, filled)))
+        return _line_art(ink, fg, outer, filled, band, stroke_width(cv2.bitwise_and(ink, filled)))
     if drawing and cv2.countNonZero(cv2.bitwise_and(fg, filled)) < LINE_ART_FILL * cv2.countNonZero(filled):
-        stroke = _stroke(cv2.bitwise_and(ink, filled))
+        stroke = stroke_width(cv2.bitwise_and(ink, filled))
         if stroke <= LINE_ART_STROKE * max(h, w) or (
                 stroke <= LINE_ART_DARK_STROKE * max(h, w) and _contrast(image_bgr, ink, filled) >= LINE_ART_DARK):
             return _line_art(ink, fg, outer, filled, band, stroke)
@@ -166,7 +166,7 @@ def _contrast(image_bgr: np.ndarray, ink: np.ndarray, filled: np.ndarray) -> flo
     return float(np.median(np.abs(gray[cv2.bitwise_and(ink, filled) > 0].astype(float) - paper)))
 
 
-def _stroke(ink: np.ndarray) -> float:
+def stroke_width(ink: np.ndarray) -> float:
     """Typical line width: the ink area over half its edge length."""
     contours, _ = cv2.findContours(ink, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     edge = sum(cv2.arcLength(c, True) for c in contours)
@@ -397,7 +397,7 @@ def find_hidden_lines(ink: np.ndarray, bbox) -> list[tuple[str, float, float, fl
     gaps, inside the bbox. Each is ("h" | "v", pos, start, end) in fractions of the bbox, measured from its
     left and top edges as in the image: "h" is a horizontal line at y = pos from x = start to x = end."""
     x0, y0, bw, bh = bbox
-    thin = _spur_kernel(ink.shape, _stroke(ink))
+    thin = _spur_kernel(ink.shape, stroke_width(ink))
     longest = DASH_MAX * max(bw, bh)
     _, _, stats, _ = cv2.connectedComponentsWithStats(ink, connectivity=8)
     boxes = [(x, y, w, h) for x, y, w, h, area in (tuple(int(v) for v in s) for s in stats[1:])

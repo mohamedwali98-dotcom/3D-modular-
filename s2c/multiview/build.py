@@ -71,7 +71,7 @@ def _plane_uv(face: str, pts, env: Envelope) -> list[tuple[float, float]]:
     return [(env.z_mm - a, b) for a, b in pts]
 
 
-def _clean(pts) -> list[tuple[float, float]]:
+def clean_polygon(pts) -> list[tuple[float, float]]:
     out: list[tuple[float, float]] = []
     for a, b in pts:
         p = (round(float(a), 6), round(float(b), 6))
@@ -84,12 +84,12 @@ def _clean(pts) -> list[tuple[float, float]]:
 
 def _prism(face: str, outline: Outline, env: Envelope) -> cq.Workplane:
     plane, length = _canonical_plane(face, env)
-    outer = _clean(_plane_uv(face, outline.outer, env))
+    outer = clean_polygon(_plane_uv(face, outline.outer, env))
     if len(outer) < 3:
         raise BuildError(*INVALID)
     solid = cq.Workplane(plane).polyline(outer).close().extrude(length)
     for loop in outline.inner:
-        pts = _clean(_plane_uv(face, loop, env))
+        pts = clean_polygon(_plane_uv(face, loop, env))
         if len(pts) >= 3:
             solid = solid.cut(cq.Workplane(plane).polyline(pts).close().extrude(length))
     return solid
@@ -181,7 +181,7 @@ def _apply_finish(solid: cq.Workplane, finish) -> cq.Workplane:
 def _turn(hull: cq.Workplane, spec: MultiViewSpec) -> cq.Workplane:
     """A round part cut down to its solid of revolution, so a hub comes out round instead of square.
     The turn only refines a hull that already built: if OCC fails on it, the hull is kept."""
-    from s2c.multiview import turned  # deferred: turned reuses _clean from this module
+    from s2c.multiview import turned  # deferred: turned reuses clean_polygon from this module
 
     axis = None
     try:

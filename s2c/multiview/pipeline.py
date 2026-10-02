@@ -34,7 +34,7 @@ from s2c.multiview.fuse import (
 from s2c.multiview.label import Chat, MvLabel, env_chat, hint_label, label_image
 from s2c.multiview.merge_views import merge_same_face
 from s2c.multiview.ocr import BatchReader, Reader, link, read_values
-from s2c.multiview.outline import PixelOutline, _stroke, extract, ink_mask, resize_long_side
+from s2c.multiview.outline import PixelOutline, extract, ink_mask, resize_long_side, stroke_width
 from s2c.multiview.qwen_faces import RESCUE_PENALTY, SEED, TRIES, rescue_sketch
 from s2c.multiview.qwen_image import MAX_REFS, ImageGen, default_gen
 from s2c.multiview.qwen_reader import qwen_batch_reader
@@ -118,7 +118,7 @@ def line_width(bgr: np.ndarray, outline: PixelOutline, mask_out=()) -> float:
     over half its edge length."""
     filled = np.zeros(outline.shape, np.uint8)
     cv2.fillPoly(filled, [np.asarray(outline.outer, np.int32).reshape(-1, 1, 2)], 255)
-    return _stroke(cv2.bitwise_and(ink_mask(bgr, mask_out), filled))
+    return stroke_width(cv2.bitwise_and(ink_mask(bgr, mask_out), filled))
 
 
 class MvPipeline:

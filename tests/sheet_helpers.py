@@ -96,7 +96,7 @@ def draw_sheet(views: dict[str, np.ndarray], layout: str = "first", labels: bool
         if face in texts:
             truth[f"label:{face}"] = _put(ink, texts[face], truth[face])
     if symbol:
-        truth["symbol:side"], truth["symbol:end"] = _draw_symbol(ink, symbol, *sym_at, sym, line, centre_lines)
+        truth["symbol:side"], truth["symbol:end"] = draw_symbol(ink, symbol, *sym_at, sym, line, centre_lines)
     if border:
         b = max(4, gap // 4)
         cv2.rectangle(ink, (b, b), (w - 1 - b, h - 1 - b), 255, line + 1)
@@ -237,7 +237,7 @@ def _symbol_size(size: int) -> tuple[int, int]:
     return size + size // 2 + size, size  # cone length, space, end view; height is the large diameter
 
 
-def _draw_symbol(ink: np.ndarray, projection: str, x: int, y: int, size: int, line: int,
+def draw_symbol(ink: np.ndarray, projection: str, x: int, y: int, size: int, line: int,
                  centre_lines: bool = False) -> tuple[Box, Box]:
     """ISO 5456-2 projection symbol: a truncated cone (narrow end left) as a trapezoid, and its end view as two
     concentric circles. First-angle puts the circles beside the cone's large end, third-angle beside its small end.

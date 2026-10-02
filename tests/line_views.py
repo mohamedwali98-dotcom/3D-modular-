@@ -61,7 +61,7 @@ def hlr(part: cq.Workplane, face: str) -> tuple[list[np.ndarray], list[np.ndarra
     return [p - shift for p in visible], [p - shift for p in hidden], size
 
 
-def _dashed(ink: np.ndarray, pts: np.ndarray, line: int, dash: int, gap: int) -> None:
+def dashed_line(ink: np.ndarray, pts: np.ndarray, line: int, dash: int, gap: int) -> None:
     """Draw a polyline as even dashes along its length."""
     seg = np.diff(pts, axis=0)
     lengths = np.hypot(seg[:, 0], seg[:, 1])
@@ -90,7 +90,7 @@ def draw_view(part: cq.Workplane, face: str, px_per_mm: float, line: int = 2, hi
     if hidden:
         dash = max(6, 4 * line)
         for p in hid:
-            _dashed(ink, px(p), line, dash, max(4, 2 * line))
+            dashed_line(ink, px(p), line, dash, max(4, 2 * line))
     for p in visible:
         cv2.polylines(ink, [np.round(px(p)).astype(np.int32)], False, 255, line)
     return ink
@@ -128,7 +128,7 @@ def iso_view(part: cq.Workplane, px_per_mm: float, line: int = 2) -> np.ndarray:
     return ink
 
 
-def _text(ink: np.ndarray, text: str, x: int, y: int, height: int, vertical: bool,
+def draw_text(ink: np.ndarray, text: str, x: int, y: int, height: int, vertical: bool,
           font: int = cv2.FONT_HERSHEY_SIMPLEX) -> tuple[int, int, int, int]:
     """Write `text` with its ink box's top-left corner at (x, y), read left to right or bottom to top."""
     scale, thick = height / 22.0, max(1, round(height / 10))
@@ -171,14 +171,14 @@ def dimension(ink: np.ndarray, p0: tuple[int, int], p1: tuple[int, int], offset:
         cv2.line(ink, (x0, yd), (x1, yd), 255, line)
         _arrow(ink, (x0, yd), (x1, yd), size)
         _arrow(ink, (x1, yd), (x0, yd), size)
-        return _text(ink, text, (x0 + x1) // 2 - tw // 2, yd - height - 6, height, False, font)
+        return draw_text(ink, text, (x0 + x1) // 2 - tw // 2, yd - height - 6, height, False, font)
     xd = x0 + offset
     for y in (y0, y1):
         cv2.line(ink, (x0 + s * gap, y), (xd + s * over, y), 255, line)
     cv2.line(ink, (xd, y0), (xd, y1), 255, line)
     _arrow(ink, (xd, y0), (xd, y1), size)
     _arrow(ink, (xd, y1), (xd, y0), size)
-    return _text(ink, text, xd - height - 6, (y0 + y1) // 2 - tw // 2, height, True, font)
+    return draw_text(ink, text, xd - height - 6, (y0 + y1) // 2 - tw // 2, height, True, font)
 
 
 GRID3 = {  # (column, row) around the front; row +1 is below it

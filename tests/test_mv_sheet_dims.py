@@ -4,12 +4,12 @@ import numpy as np
 import pytest
 
 from s2c.multiview.sheet import crop_views, name_views, split_sheet, view_body
+from tests.builders import add_pins, cut_box, solid_block
 from tests.line_views import drawing_sheet
-from tests.test_mv_relief import _block, _cut, _pins
 
 
 def _part():
-    return _pins(_cut(_cut(_block(), 0, 40, 50, 15, 60, 70), 65, 40, 50, 80, 60, 70), z=20)
+    return add_pins(cut_box(cut_box(solid_block(), 0, 40, 50, 15, 60, 70), 65, 40, 50, 80, 60, 70), z=20)
 
 
 @pytest.fixture(scope="module")
@@ -119,7 +119,7 @@ def test_an_unconfirmed_scale_suggests_the_sizes_instead_of_trusting_them():
     pipe = MvPipeline()
     images = []
     for f in ("front", "top", "right"):
-        ink = cv2.copyMakeBorder(draw_view(_block(), f, 4.0), 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=0)
+        ink = cv2.copyMakeBorder(draw_view(solid_block(), f, 4.0), 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=0)
         images.append(ImageInput(cv2.imencode(".png", 255 - ink)[1].tobytes(), f, "drawing", mm_per_px=0.25,
                                  scale_confirmed=False))
     result = pipe.fuse(pipe.observe(images))
@@ -140,7 +140,7 @@ def test_views_with_a_known_scale_build_with_no_typed_size():
     from s2c.multiview import spec as S
     from s2c.multiview.pipeline import ImageInput, MvPipeline
     from tests.line_views import draw_view
-    part = _block()
+    part = solid_block()
     pipe = MvPipeline()
     images = []
     for f in ("front", "top", "right"):
@@ -194,7 +194,7 @@ def test_extension_lines_touching_the_outline_stay_out_of_the_view():
     """Hand and some CAD drawings start extension lines on the outline: the dimension line closes a loop with it,
     which must not be filled into the view."""
     from s2c.multiview.sheet_read import read_sheet
-    img, boxes, words = drawing_sheet(_block(), layout="third", faces=("front", "top", "right"), ext_gap=0)
+    img, boxes, words = drawing_sheet(solid_block(), layout="third", faces=("front", "top", "right"), ext_gap=0)
     sheet = split_sheet(img)
     ink, _ = _bodies(img, sheet)
     long = max(img.shape[:2])
