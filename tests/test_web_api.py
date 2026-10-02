@@ -530,7 +530,12 @@ def test_without_ai_settings_no_image_goes_to_a_hosted_service():
     """Qwen-Image, its sketch rescue, TripoSR and Solaria send the user's images to hosted services: off unless the
     user turns them on (audit H5)."""
     from s2c.web import jobs
-    job = analyze()
+    provided = MvPipeline(image_gen=lambda *a, **k: None, mesh_provider=lambda img: None, depth=lambda img: None)
+    app.dependency_overrides[get_pipeline] = lambda: provided  # every helper configured on the server
+    try:
+        job = analyze()
+    finally:
+        app.dependency_overrides[get_pipeline] = lambda: MvPipeline()
     pipe = jobs.get_job(job["job_id"]).pipe
     assert not pipe.draw_faces and not pipe.rescue_enabled and pipe.mesh_provider is None and pipe.depth is None
 
