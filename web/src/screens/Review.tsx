@@ -21,7 +21,7 @@ const ENV_META = [
 
 const EXPLAIN: Record<BadgeKey, string> = {
   user_written: 'You wrote this value.',
-  measured: 'Measured from the coin or reference in your photo.',
+  measured: 'Measured on your drawing (its dimensions give the scale) or from the coin or reference in your photo.',
   user_edited: 'You typed this value.',
   scaled: 'Scaled from the overall size you entered.',
   inferred: 'Drawn by the AI from your sketches. Check it against your part.',

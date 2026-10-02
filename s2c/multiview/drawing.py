@@ -32,10 +32,13 @@ RENDER = Configuration(background_policy=BackgroundPolicy.WHITE, color_policy=Co
 
 
 
-def feature_note(f) -> str:
-    """A feature the views do not dimension, in words: "pocket 15 x 20, 20 deep, on the front face"."""
+def feature_note(f, depth_prov: str | None = None) -> str:
+    """A feature the views do not dimension, in words: "pocket 15 x 20, 20 deep, on the front face". A depth no
+    view of the source drawing showed says so."""
     if f.type == "pocket":
         depth = "through" if f.depth_mm is None else f"{f.depth_mm:g} deep"
+        if depth_prov == "default":
+            depth += " (depth not drawn, assumed)"
         return f"pocket {f.width_mm:g} x {f.height_mm:g}, {depth}, on the {f.face} face"
     if f.type == "boss":
         return f"pin Ø{f.diameter_mm:g}, {f.height_mm:g} high, on the {f.face} face"
@@ -111,7 +114,7 @@ def drawing_document(solid, spec: MultiViewSpec) -> ezdxf.document.Drawing:
                                  override=DIM_STYLE, text=f"<> ({f.face})",  # ezdxf prepends its own diameter
                                  dxfattribs={"layer": "DIMENSIONS"}).render()   # sign to "<>"; don't add a second
         else:
-            notes.append(f"Feature {k + 1}: {feature_note(f)}")
+            notes.append(f"Feature {k + 1}: {feature_note(f, spec.provenance.get(f'features[{k}].depth_mm'))}")
     for finish in spec.finishes:
         if isinstance(finish, Fillet):
             notes.append(f"Fillet R{finish.radius_mm:g} on {EDGE_LABELS[finish.edges]}")

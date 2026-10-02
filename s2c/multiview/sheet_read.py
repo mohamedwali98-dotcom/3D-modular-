@@ -16,6 +16,7 @@ from s2c.multiview.sheet import (
     SKIP,
     Naming,
     Sheet,
+    _remove_border,
     ink_mask,
     is_sheet,
     name_views,
@@ -172,6 +173,7 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
         warnings.append("A view that could not be named (an isometric picture, a detail) was left out; it is "
                         "only a picture of the part.")
     ink, bodies = part_bodies(sheet, image, naming)
+    _remove_border(ink)  # the sheet's frame is no dimension line
     scale = read_dimensions(image, ink, bodies, service)
     warnings += scale.warnings
     if scale.mm_per_px:

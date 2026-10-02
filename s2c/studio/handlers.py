@@ -205,8 +205,8 @@ class Studio:
         image = _read_image(path)
         if image is None:
             return None
-        read = read_sheet(image, session.projection, reader=self.pipe.reader, service=self.pipe.reading(),
-                          keep_unnamed=True)
+        pipe = self.pipe.configured(session.ai)  # the user's AI switches (Qwen-VL reader off) hold here too
+        read = read_sheet(image, session.projection, reader=pipe.reader, service=pipe.reading(), keep_unnamed=True)
         if read is None:
             return None
         sheet_id, folder = uuid.uuid4().hex[:8], self._sheet_folder(session.id)
