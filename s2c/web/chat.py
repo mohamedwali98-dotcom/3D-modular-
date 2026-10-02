@@ -179,14 +179,26 @@ def filter_part(raw: object, nums: set[float]) -> tuple[PartRequest | None, list
     return part, list(dict.fromkeys(check(part) + dropped))
 
 
-def sign(reply: str) -> str:
-    """The server's mark on a reply it wrote. The client sends the conversation back every turn, so an assistant
-    turn it made up (to steer the model off its rules) is told apart from ours."""
-    return hmac.new(_PROCESS_KEY, reply.encode(), hashlib.sha256).hexdigest()  # a restart starts conversations over
+def sign(prompt: str, reply: str) -> str:
+    """The server's mark on a reply it wrote to the user turn `prompt`. The client sends the conversation back
+    every turn, so an assistant turn it made up (to steer the model off its rules), or one of ours moved after
+    another user turn, is told apart from ours. A restart starts conversations over."""
+    return hmac.new(_PROCESS_KEY, json.dumps([prompt, reply]).encode(), hashlib.sha256).hexdigest()
 
 
-def signed(role: str, content: str, sig: str | None) -> bool:
-    return role != "assistant" or (sig is not None and hmac.compare_digest(sig, sign(content)))
+def verified(turns: list[tuple[str, str, str | None]]) -> bool:
+    """Every assistant turn (role, content, sig) carries our signature for the user turn just before it."""
+    prompt = None
+    for role, content, sig in turns:
+        if role == "user":
+            prompt = content
+        elif prompt is None or sig is None or not hmac.compare_digest(sig.encode(), sign(prompt, content).encode()):
+            return False
+    return True
+
+
+def _prompt(messages: list[dict]) -> str:
+    return next((m["content"] for m in reversed(messages) if m["role"] == "user"), "")
 
 
 def run_chat(messages: list[dict], transport: ChatTransport) -> dict:
@@ -198,11 +210,11 @@ def run_chat(messages: list[dict], transport: ChatTransport) -> dict:
         if data is not None:
             break
     if data is None:
-        return {"reply": REPHRASE, "sig": sign(REPHRASE), "options": [], "part": None, "missing": [], "spec": None,
+        return {"reply": REPHRASE, "sig": sign(_prompt(messages), REPHRASE), "options": [], "part": None, "missing": [], "spec": None,
                 "model": transport.model}
     options = [str(o)[:80] for o in data.get("options") or [] if isinstance(o, (str, int, float))][:4]
     part, missing = filter_part(data.get("part"), user_numbers(messages))
     spec = spec_from_request(part) if part is not None and not missing else None
-    return {"reply": data["reply"], "sig": sign(data["reply"]), "options": options,
+    return {"reply": data["reply"], "sig": sign(_prompt(messages), data["reply"]), "options": options,
             "part": part.model_dump() if part is not None else None, "missing": missing,
             "spec": spec.model_dump(mode="json") if spec is not None else None, "model": transport.model}

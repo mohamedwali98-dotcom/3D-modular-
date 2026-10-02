@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { ApiError, chat } from '../api/client';
+import { lastTurns } from '../lib/turns';
 import type { ChatMessage } from '../api/types';
 import { Badge } from '../components/Badge';
 import { StopCard } from '../components/StopCard';
@@ -74,7 +75,7 @@ export function Describe() {
     setBusy(true);
     setError(null);
     try {
-      const r = await chat(next.slice(-20));
+      const r = await chat(lastTurns(next, 20));
       dispatch({ type: 'CHAT', messages: [...next, { role: 'assistant', content: r.reply, sig: r.sig }], last: r });
     } catch (e) {
       if (alive.current) setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');

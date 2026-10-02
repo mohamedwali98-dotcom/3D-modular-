@@ -19,7 +19,7 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image, ImageOps
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from s2c import MAX_PIXELS
@@ -292,7 +292,7 @@ def export(body: ExportBody) -> dict:
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
-    sig: str | None = None  # the server's signature on its own reply (chat.sign); a user turn has none
+    sig: str | None = Field(None, pattern=r"^[0-9a-f]{64}$")  # the server's signature on its reply (chat.sign)
 
 
 class ChatBody(BaseModel):
@@ -306,7 +306,7 @@ def chat_route(body: ChatBody,
         raise HTTPException(400, f"Send between 1 and {chat.MAX_MESSAGES} messages.")
     if any(len(m.content) > chat.MAX_CHARS for m in body.messages):
         raise HTTPException(400, f"A message is longer than {chat.MAX_CHARS} characters.")
-    if not all(chat.signed(m.role, m.content, m.sig) for m in body.messages):
+    if not chat.verified([(m.role, m.content, m.sig) for m in body.messages]):
         raise HTTPException(400, "The conversation could not be checked. Start a new one.")
     if transport is None:
         raise HTTPException(503, "The chat model is not configured. Add CHAT_API_KEY to .env.")
