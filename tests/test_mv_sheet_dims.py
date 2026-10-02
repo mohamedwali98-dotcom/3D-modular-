@@ -188,3 +188,33 @@ def test_only_words_beside_a_dimension_line_are_read(third):
     counting = _Counting(words)
     read_dimensions(img, ink, bodies, ReadingService([counting], cache=None))
     assert counting.crops <= 3 * len(words), counting.crops
+
+
+def test_extension_lines_touching_the_outline_stay_out_of_the_view():
+    """Hand and some CAD drawings start extension lines on the outline: the dimension line closes a loop with it,
+    which must not be filled into the view."""
+    from s2c.multiview.sheet_read import read_sheet
+    img, boxes, words = drawing_sheet(_block(), layout="third", faces=("front", "top", "right"), ext_gap=0)
+    sheet = split_sheet(img)
+    ink, _ = _bodies(img, sheet)
+    long = max(img.shape[:2])
+    for view in sheet.drawings[0].views:
+        body, _ = view_body(ink, view.box, long)
+        if body[2] * body[3] > 5000:
+            assert any(_close(body, b) for b in boxes.values()), (view.box, body, boxes)
+    read = read_sheet(img, "third", service=_service(words))
+    assert read.scale.mm_per_px == pytest.approx(0.25, rel=0.01)
+
+
+def test_a_thin_flange_stays_part_of_its_view():
+    """A 1.5 mm flange drawn at 2 px/mm is about a line width thick, but it encloses area: it is the part."""
+    import cadquery as cq
+    part = cq.Workplane("XY").box(30, 1.5, 20, centered=False).union(
+        cq.Workplane("XY").box(10, 20, 20, centered=False).translate((10, 1.5, 0)))
+    img, boxes, _ = drawing_sheet(part, layout="first", faces=("front", "top", "left"), px_per_mm=2.0, dims=False)
+    sheet = split_sheet(img)
+    ink, _ = _bodies(img, sheet)
+    long = max(img.shape[:2])
+    front = next(v for v in sheet.drawings[0].views if _close(v.box, boxes["front"], 8))
+    body, _ = view_body(ink, front.box, long)
+    assert _close(body, boxes["front"], 6), (body, boxes["front"])

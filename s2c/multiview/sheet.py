@@ -713,12 +713,41 @@ def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
     return (x + bx, y + by, bw, bh), body
 
 
+def _thin_lines(sub: np.ndarray) -> np.ndarray:
+    """Straight runs drawn in the thin line weight: dimension and extension lines (ISO 128 draws them thin and the
+    visible outline thick). Erased before the view is filled, so a dimension line whose extension lines touch the
+    outline never closes a loop that would be filled into the view. A drawing in one line weight erases nothing."""
+    h, w = sub.shape
+    u8 = sub.astype(np.uint8)
+    runs = []
+    for axis, size in (("h", w), ("v", h)):
+        length = max(15, round(0.15 * min(h, w)))
+        kernel = (1, length) if axis == "h" else (length, 1)
+        m, labels, stats, _ = cv2.connectedComponentsWithStats(
+            cv2.morphologyEx(u8, cv2.MORPH_OPEN, np.ones(kernel, np.uint8)), connectivity=8)
+        for i in range(1, m):
+            rw, rh = int(stats[i, 2]), int(stats[i, 3])
+            along, thick = (rw, rh) if axis == "h" else (rh, rw)
+            runs.append((labels, i, along, thick, size))
+    long_runs = [t for _, _, along, t, size in runs if along >= 0.5 * size]
+    if not long_runs:
+        return np.zeros_like(u8)
+    outline = max(long_runs)
+    out = np.zeros_like(u8)
+    for labels, i, _, thick, _ in runs:
+        if thick <= 0.6 * outline:
+            out[labels == i] = 1
+    return out
+
+
 def _solid(drawn: np.ndarray, sub: np.ndarray) -> tuple[Box, np.ndarray] | None:
-    """The filled region of `drawn` with thin lines opened away, kept where it joins what survived; its box and mask
-    in the view's frame. None when nothing closed survives."""
-    filled = ndimage.binary_fill_holes(drawn)
+    """The filled region of `drawn` (dimension lines erased) with thin lines opened away, plus the thin parts joined
+    to it that enclose area (a flange drawn a line width thick); its box and mask in the view's frame. A line stub
+    (an extension line, a centre-line tail) encloses nothing and is left out. None when nothing closed survives."""
     dist = cv2.distanceTransform(sub.astype(np.uint8), cv2.DIST_L2, 3)
     stroke = 2 * max(1.0, float(np.percentile(dist[sub], 90))) if sub.any() else 2.0
+    drawn = drawn & ~(_thin_lines(sub) > 0)
+    filled = ndimage.binary_fill_holes(drawn)
     k = max(5, int(2 * stroke) + 1) | 1
     core = cv2.morphologyEx(filled.astype(np.uint8), cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
     n, labels, stats, _ = cv2.connectedComponentsWithStats(core, connectivity=8)
@@ -731,11 +760,19 @@ def _solid(drawn: np.ndarray, sub: np.ndarray) -> tuple[Box, np.ndarray] | None:
         and stats[i, 0] < bx + bw and stats[i, 0] + stats[i, 2] > bx
         and stats[i, 1] < by + bh and stats[i, 1] + stats[i, 3] > by)]
     core = np.isin(labels, keep)
-    grown = cv2.dilate(core.astype(np.uint8), np.ones((k + 2, k + 2), np.uint8)) > 0
     # only drawn pieces joined to the view: an extension line starts a small gap away from it, so its stub is not
     _, pieces = cv2.connectedComponents(filled.astype(np.uint8), connectivity=8)
     joined = np.isin(pieces, np.unique(pieces[core & (pieces > 0)]))
-    body = filled & grown & joined
+    near = cv2.dilate(core.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    body = filled & joined & near
+    rest = filled & joined & ~near  # thin parts: kept when they hold area that is not ink (two lines and a gap)
+    m, parts = cv2.connectedComponents(rest.astype(np.uint8), connectivity=8)  # or are thicker than a line
+    inside = filled & ~(drawn > 0)
+    band = cv2.distanceTransform(rest.astype(np.uint8), cv2.DIST_L2, 3)
+    for i in range(1, m):
+        part = parts == i
+        if np.count_nonzero(part & inside) >= 2 or 2 * float(band[part].max()) >= 1.5 * stroke:
+            body |= part
     ys, xs = np.nonzero(body)
     x0, x1, y0, y1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
     return (x0, y0, x1 - x0 + 1, y1 - y0 + 1), body[y0: y1 + 1, x0: x1 + 1]
