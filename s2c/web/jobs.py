@@ -70,6 +70,7 @@ class Job:
     error: str | None = None
     observed: Observed | None = None
     created: float = field(default_factory=time.time)
+    clock: float = field(default_factory=time.monotonic)  # when it started, for its time budget: no clock jumps
     used: float = field(default_factory=time.time)  # the last status poll or merge: a job on Review stays
     use: int = field(default_factory=lambda: next(_USES))
     cancel: bool = False
@@ -305,11 +306,12 @@ def _finish(job: Job, res, filled_by: dict) -> None:
         job.status = "done"
 
 
-def _check(job: Job) -> None:
-    """Called at every progress event: a cancelled job or one past its time budget stops here."""
+def _check(job: Job, data: dict) -> None:
+    """Called at every progress event: a cancelled job stops here, and one past its time budget stops before its
+    next stage starts (a stage that just finished keeps its result)."""
     if job.cancel:
         raise JobCancelled()
-    if time.time() - job.created > JOB_BUDGET_S:
+    if data.get("state") == "running" and time.monotonic() - job.clock > JOB_BUDGET_S:
         raise JobTimeout()
 
 
@@ -324,7 +326,7 @@ def _timed_out(job: Job) -> None:
 
 def run(job: Job, pipe: MvPipeline, images: list[ImageInput], reference: str | None) -> None:
     def progress(name: str, data: dict) -> None:
-        _check(job)
+        _check(job, data)
         reduce(job, name, data)
 
     try:
@@ -394,12 +396,12 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
     from s2c.web.sketch_adapter import observed_from_sketch
 
     def progress(name: str, data: dict) -> None:
-        _check(job)
+        _check(job, data)
         reduce(job, name, data)
 
     def fused(name: str, data: dict) -> None:
         """observe() reports per-image label/outline/read stages a sheet job does not have; keep draw and fuse."""
-        _check(job)
+        _check(job, data)
         if data.get("key") in ("draw", "fuse"):
             reduce(job, name, data)
 

@@ -79,3 +79,19 @@ def test_a_request_turned_away_evicts_nothing(monkeypatch):
     job = jobs.new_job(1, MvPipeline(), register=False)
     assert not jobs.start(job, MvPipeline(), [], None)
     assert jobs.get_job(reviewed.job_id) is reviewed and jobs.get_job(job.job_id) is None
+
+
+def test_the_budget_stops_a_job_before_a_stage_never_after_one(monkeypatch):
+    """A stage that finished keeps its result: past the budget, the job stops before the next one starts."""
+    import pytest
+    monkeypatch.setattr(jobs, "JOB_BUDGET_S", 0)
+    job = jobs.new_job(1, MvPipeline(), register=False)
+    jobs._check(job, {"key": "fuse", "state": "done"})
+    with pytest.raises(jobs.JobTimeout):
+        jobs._check(job, {"key": "fuse", "state": "running"})
+
+
+def test_the_budget_ignores_a_jump_of_the_wall_clock():
+    job = jobs.new_job(1, MvPipeline(), register=False)
+    job.created -= 10 * jobs.JOB_BUDGET_S  # the system clock jumped forward (NTP)
+    jobs._check(job, {"key": "draw", "state": "running"})
