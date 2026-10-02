@@ -100,7 +100,9 @@ def model_name() -> str:
     return os.environ.get("VLM_MODEL") or "Vision model"
 
 
-def new_job(n_images: int, pipe: MvPipeline) -> Job:
+def new_job(n_images: int, pipe: MvPipeline, register: bool = True) -> Job:
+    """A photo analysis's record. `register=False` (the API) leaves it out of the registry until it may start:
+    a request turned away then evicts nothing."""
     stages = []
     for key in STAGES:
         tool, ai = TOOLS[key]
@@ -122,11 +124,12 @@ def new_job(n_images: int, pipe: MvPipeline) -> Job:
     if pipe.image_gen is None or not pipe.draw_faces:
         job.stage("draw").update(tool="TripoSR" if pipe.mesh_provider is not None else "assumed",
                                  ai=pipe.mesh_provider is not None)
-    _register(job)
+    if register:
+        _register(job)
     return job
 
 
-def new_sheet_job(pipe: MvPipeline) -> Job:
+def new_sheet_job(pipe: MvPipeline, register: bool = True) -> Job:
     """One image, one job: the sheet replaces label/outline/read with its own three stages, then joins
     draw/fuse exactly as a per-face photo analysis does."""
     stages = [{"key": key, "state": "pending", "tool": tool, "ai": ai, "detail": "", "started": None, "ended": None}
@@ -137,16 +140,22 @@ def new_sheet_job(pipe: MvPipeline) -> Job:
     if pipe.image_gen is None or not pipe.draw_faces:
         job.stage("draw").update(tool="TripoSR" if pipe.mesh_provider is not None else "assumed",
                                  ai=pipe.mesh_provider is not None)
-    _register(job)
+    if register:
+        _register(job)
     return job
 
 
 def _register(job: Job) -> None:
     with _registry_lock:
-        idle = sorted((j for jid, j in JOBS.items() if jid not in _ACTIVE), key=lambda j: j.use)
-        for old in idle[:max(0, len(JOBS) + 1 - MAX_JOBS)]:
-            del JOBS[old.job_id]
-        JOBS[job.job_id] = job
+        _add(job)
+
+
+def _add(job: Job) -> None:
+    """Into the registry, evicting the least recently used idle jobs past MAX_JOBS. Hold _registry_lock."""
+    idle = sorted((j for jid, j in JOBS.items() if jid not in _ACTIVE), key=lambda j: j.use)
+    for old in idle[:max(0, len(JOBS) + 1 - MAX_JOBS)]:
+        del JOBS[old.job_id]
+    JOBS[job.job_id] = job
 
 
 def get_job(job_id: str) -> Job | None:
@@ -481,6 +490,8 @@ def _launch(job: Job, target, args: tuple) -> bool:
         if len(_ACTIVE) >= MAX_RUNNING:
             JOBS.pop(job.job_id, None)
             return False
+        if job.job_id not in JOBS:
+            _add(job)
         _ACTIVE.add(job.job_id)
     threading.Thread(target=target, args=args, daemon=True, name=f"analysis-{job.job_id[:8]}").start()
     return True

@@ -185,13 +185,13 @@ def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None
         settings = settings.model_copy(update={"seed": secrets.randbelow(2**31)})
     pipe = pipe.configured(settings)
     if mode == "sheet":
-        job = jobs.new_sheet_job(pipe)
+        job = jobs.new_sheet_job(pipe, register=False)
         if not jobs.start_sheet(job, pipe, ImageInput(datas[0]), projection):
             raise HTTPException(429, BUSY)
         return {"job_id": job.job_id}
     face_tags, kind_tags = _json_list(faces, "faces"), _json_list(kinds, "kinds")
     images = [ImageInput(d, _tag(face_tags, i), _tag(kind_tags, i)) for i, d in enumerate(datas)]
-    job = jobs.new_job(len(images), pipe)
+    job = jobs.new_job(len(images), pipe, register=False)
     if not jobs.start(job, pipe, images, reference or None):
         raise HTTPException(429, BUSY)
     return {"job_id": job.job_id}

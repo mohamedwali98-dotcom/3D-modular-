@@ -68,3 +68,14 @@ def test_a_job_that_may_draw_a_face_keeps_its_images(monkeypatch):
     job = jobs.new_job(1, pipe)
     jobs.run(job, pipe, [ImageInput(_front_png(), "front", "sketch")], None)
     assert job.result["abstain"] is not None and len(job.observed.images) == 1
+
+
+def test_a_request_turned_away_evicts_nothing(monkeypatch):
+    """An analysis refused because MAX_RUNNING already run must not push a job someone is reviewing out."""
+    monkeypatch.setattr(jobs, "JOBS", {})
+    monkeypatch.setattr(jobs, "MAX_JOBS", 1)
+    monkeypatch.setattr(jobs, "_ACTIVE", {c * 32 for c in "abc"})
+    reviewed = _done()
+    job = jobs.new_job(1, MvPipeline(), register=False)
+    assert not jobs.start(job, MvPipeline(), [], None)
+    assert jobs.get_job(reviewed.job_id) is reviewed and jobs.get_job(job.job_id) is None
