@@ -26,3 +26,11 @@ def _no_trocr_download(monkeypatch):
 def _no_qwen_warmup(monkeypatch):
     """default_pipeline() warms Qwen-VL in a background thread; a unit test must never call the real chat."""
     monkeypatch.setattr("s2c.multiview.qwen_reader.warm_chat", lambda chat: None)
+
+
+@pytest.fixture(autouse=True)
+def _fresh_rate_limits():
+    """The /api rate limits count per process: every test starts with an empty window."""
+    from s2c.web.guard import LIMITER
+    LIMITER.reset()
+    yield

@@ -6,7 +6,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-Mm = Annotated[float, Field(gt=0, description="millimetres")]
+MAX_MM = 10_000.0   # 10 m: past any part this app builds, and it keeps an infinite or absurd size out of CadQuery
+MAX_POINTS = 5000   # outline points per loop
+MAX_LOOPS = 200     # openings per outline
+MAX_FEATURES = 200
+MAX_FINISHES = 10
+Mm = Annotated[float, Field(gt=0, le=MAX_MM, description="millimetres")]
 Face = Literal["front", "back", "left", "right", "top", "bottom"]
 MvProvenance = Literal["user_written", "measured", "user_edited", "scaled", "inferred", "estimated", "default"]
 ViewSource = Literal["observed", "mirrored", "inferred", "assumed"]
@@ -29,7 +34,7 @@ POINT_TOLERANCE_MM = 0.5
 
 class _Strict(BaseModel):
     """extra="forbid" rejects fields a model invents, such as an estimated width."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Envelope(_Strict):
@@ -42,8 +47,8 @@ class Envelope(_Strict):
 
 
 class Outline(_Strict):
-    outer: list[Point] = Field(min_length=3)
-    inner: list[list[Point]] = []
+    outer: list[Point] = Field(min_length=3, max_length=MAX_POINTS)
+    inner: list[Annotated[list[Point], Field(max_length=MAX_POINTS)]] = Field(default=[], max_length=MAX_LOOPS)
     source: ViewSource
     confidence: float = Field(ge=0, le=1)
 
@@ -123,11 +128,11 @@ class MultiViewSpec(_Strict):
     version: Literal["mv1"] = "mv1"
     envelope: Envelope
     views: Views
-    features: list[FaceFeature] = []
-    finishes: list[Finish] = []
-    provenance: dict[str, MvProvenance]
-    snapped: list[str] = []
-    warnings: list[str] = []
+    features: list[FaceFeature] = Field(default=[], max_length=MAX_FEATURES)
+    finishes: list[Finish] = Field(default=[], max_length=MAX_FINISHES)
+    provenance: dict[str, MvProvenance] = Field(max_length=10 * (MAX_FEATURES + MAX_FINISHES) + 10)
+    snapped: list[str] = Field(default=[], max_length=10 * (MAX_FEATURES + MAX_FINISHES) + 10)
+    warnings: list[str] = Field(default=[], max_length=500)
     confidence: float = Field(ge=0, le=1)
 
     @model_validator(mode="after")

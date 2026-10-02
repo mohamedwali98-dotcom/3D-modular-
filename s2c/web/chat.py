@@ -3,9 +3,12 @@ only the numbers the user wrote (rule 2) and builds the part with describe.spec_
 writes code or geometry. Provider only from env: CHAT_* falling back to VLM_*."""
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -47,6 +50,7 @@ Reply with one JSON object only, no other text:
 "holes": [{"a_mm": <number>, "b_mm": <number>, "diameter_mm": <number>}]}}
 "part" must be filled (not null) as soon as the part type is known, with every size the user gave so far in "values", repeated on every turn. Example: the user says "a plate 60 by 40, 5 thick" -> {"reply": "Got it. Any holes?", "options": ["No holes", "Two holes", "Four holes"], "part": {"type": "plate", "values": {"width_mm": 60, "height_mm": 40, "thickness_mm": 5}, "holes": []}}"""
 
+_PROCESS_KEY = secrets.token_bytes(32)  # without an access token, replies are signed for this process's life
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _COMMA_DECIMAL = re.compile(r"(\d+),(\d+)")
 
@@ -175,6 +179,21 @@ def filter_part(raw: object, nums: set[float]) -> tuple[PartRequest | None, list
     return part, list(dict.fromkeys(check(part) + dropped))
 
 
+def _key() -> bytes:
+    token = os.environ.get("S2C_ACCESS_TOKEN")
+    return hashlib.sha256(f"s2c-chat:{token}".encode()).digest() if token else _PROCESS_KEY
+
+
+def sign(reply: str) -> str:
+    """The server's mark on a reply it wrote. The client sends the conversation back every turn, so an assistant
+    turn it made up (to steer the model off its rules) is told apart from ours."""
+    return hmac.new(_key(), reply.encode(), hashlib.sha256).hexdigest()
+
+
+def signed(role: str, content: str, sig: str | None) -> bool:
+    return role != "assistant" or (sig is not None and hmac.compare_digest(sig, sign(content)))
+
+
 def run_chat(messages: list[dict], transport: ChatTransport) -> dict:
     convo = [{"role": "system", "content": SYSTEM_PROMPT}]
     convo += [{"role": m["role"], "content": m["content"]} for m in messages]
@@ -184,11 +203,11 @@ def run_chat(messages: list[dict], transport: ChatTransport) -> dict:
         if data is not None:
             break
     if data is None:
-        return {"reply": REPHRASE, "options": [], "part": None, "missing": [], "spec": None,
+        return {"reply": REPHRASE, "sig": sign(REPHRASE), "options": [], "part": None, "missing": [], "spec": None,
                 "model": transport.model}
     options = [str(o)[:80] for o in data.get("options") or [] if isinstance(o, (str, int, float))][:4]
     part, missing = filter_part(data.get("part"), user_numbers(messages))
     spec = spec_from_request(part) if part is not None and not missing else None
-    return {"reply": data["reply"], "options": options,
+    return {"reply": data["reply"], "sig": sign(data["reply"]), "options": options,
             "part": part.model_dump() if part is not None else None, "missing": missing,
             "spec": spec.model_dump(mode="json") if spec is not None else None, "model": transport.model}

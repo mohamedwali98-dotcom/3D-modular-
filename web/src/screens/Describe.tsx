@@ -75,7 +75,7 @@ export function Describe() {
     setError(null);
     try {
       const r = await chat(next.slice(-20));
-      dispatch({ type: 'CHAT', messages: [...next, { role: 'assistant', content: r.reply }], last: r });
+      dispatch({ type: 'CHAT', messages: [...next, { role: 'assistant', content: r.reply, sig: r.sig }], last: r });
     } catch (e) {
       if (alive.current) setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
     } finally {

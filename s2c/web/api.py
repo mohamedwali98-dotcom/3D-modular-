@@ -30,12 +30,15 @@ from s2c.multiview.settings import AiSettings, GeometrySettings, StudioSettings
 from s2c.multiview.spec import MultiViewSpec, MvAbstain
 from s2c.silhouette import iou
 from s2c.web import chat, files, jobs
+from s2c.web.guard import build_slot
 
 log = logging.getLogger(__name__)
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples" / "mv" / "sketches"
 MAX_BYTES = 10 * 1024 * 1024
 MAX_FILES = 6
 MAX_BODY = MAX_FILES * MAX_BYTES + 1024 * 1024  # six full images plus the form fields
+MAX_JSON = 2 * 1024 * 1024  # a spec, settings or a chat: far under this
+TOO_LARGE_JSON = "The request is too large."
 MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 _EXAMPLE = re.compile(r"^[\w.-]+\.png$")
 UNKNOWN = "Unknown or expired analysis. Analyze again."
@@ -224,7 +227,8 @@ def _empty_model(abstain: MvAbstain) -> dict:
 
 @router.post("/model")
 def model(body: ModelBody) -> dict:
-    part = build_part(body.spec, body.geometry, ARTIFACT_ROOT)
+    with build_slot():
+        part = build_part(body.spec, body.geometry, ARTIFACT_ROOT)
     if isinstance(part, MvAbstain):
         return _empty_model(part)
     base = f"/api/artifacts/{part.key}"
@@ -253,12 +257,13 @@ class ExportBody(BaseModel):
 @router.post("/export")
 def export(body: ExportBody) -> dict:
     s = body.settings
-    part = build_part(body.spec, s.geometry, ARTIFACT_ROOT)
-    if isinstance(part, MvAbstain):
-        return {"files": {}, "zip_url": None, "print_time_s": None, "filament_g": None, "warnings": [],
-                "abstain": jobs.abstain_json(part)}
-    res = export_part(part, s.export.formats, s.mesh, s.printing)
-    zip_path = bundle(part, res, s.model_dump(mode="json"))
+    with build_slot():
+        part = build_part(body.spec, s.geometry, ARTIFACT_ROOT)
+        if isinstance(part, MvAbstain):
+            return {"files": {}, "zip_url": None, "print_time_s": None, "filament_g": None, "warnings": [],
+                    "abstain": jobs.abstain_json(part)}
+        res = export_part(part, s.export.formats, s.mesh, s.printing)
+        zip_path = bundle(part, res, s.model_dump(mode="json"))
     base = f"/api/artifacts/{part.key}"
     files = {f: {"url": f"{base}/{p.relative_to(part.folder).as_posix()}", "name": p.name,
                  "size_bytes": res.sizes.get(f, 0)} for f, p in res.files.items()}
@@ -270,6 +275,7 @@ def export(body: ExportBody) -> dict:
 class ChatMessage(BaseModel):
     role: Literal["user", "assistant"]
     content: str
+    sig: str | None = None  # the server's signature on its own reply (chat.sign); a user turn has none
 
 
 class ChatBody(BaseModel):
@@ -283,10 +289,12 @@ def chat_route(body: ChatBody,
         raise HTTPException(400, f"Send between 1 and {chat.MAX_MESSAGES} messages.")
     if any(len(m.content) > chat.MAX_CHARS for m in body.messages):
         raise HTTPException(400, f"A message is longer than {chat.MAX_CHARS} characters.")
+    if not all(chat.signed(m.role, m.content, m.sig) for m in body.messages):
+        raise HTTPException(400, "The conversation could not be checked. Start a new one.")
     if transport is None:
         raise HTTPException(503, "The chat model is not configured. Add CHAT_API_KEY to .env.")
     try:
-        return chat.run_chat([m.model_dump() for m in body.messages], transport)
+        return chat.run_chat([{"role": m.role, "content": m.content} for m in body.messages], transport)
     except chat.ChatUnavailable as e:
         detail = {
             "model_not_found": f"The chat model '{transport.model}' is not available on this provider. "
@@ -315,7 +323,7 @@ def _sentence(status: int, detail: object) -> str:
 
 def install_error_handlers(app: FastAPI) -> None:
     """/api errors render as {"error": ...}; other paths keep FastAPI's default shape.
-    Also refuses an /api body whose Content-Length is over MAX_BODY before any of it is read."""
+    Also refuses an /api body whose Content-Length is over MAX_BODY (MAX_JSON for JSON) before any of it is read."""
 
     def api(request: Request) -> bool:
         return request.url.path.startswith("/api")
@@ -323,8 +331,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.middleware("http")
     async def body_limit(request: Request, call_next):
         size = request.headers.get("content-length", "")
-        if api(request) and size.isdigit() and int(size) > MAX_BODY:
-            return JSONResponse({"error": SENTENCES[413]}, status_code=413)
+        if api(request) and size.isdigit():
+            json_body = request.headers.get("content-type", "").startswith("application/json")
+            if int(size) > (MAX_JSON if json_body else MAX_BODY):
+                return JSONResponse({"error": TOO_LARGE_JSON if json_body else SENTENCES[413]}, status_code=413)
         return await call_next(request)
 
     @app.exception_handler(StarletteHTTPException)

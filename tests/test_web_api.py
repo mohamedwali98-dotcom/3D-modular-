@@ -14,7 +14,7 @@ from s2c.web.server import app
 
 SK = Path(__file__).resolve().parents[1] / "examples" / "mv" / "sketches"
 app.dependency_overrides[get_pipeline] = lambda: MvPipeline()
-c = TestClient(app, raise_server_exceptions=False)
+c = TestClient(app, client=("127.0.0.1", 50000), raise_server_exceptions=False)
 
 
 def _fake_sheet_reading() -> SketchReading:

@@ -70,3 +70,17 @@ def test_invented_fields_are_rejected():
     data["envelope"]["w_mm"] = 3.0
     with pytest.raises(ValidationError):
         MultiViewSpec.model_validate(data)
+
+
+@pytest.mark.parametrize("bad", [float("inf"), float("nan"), 1e300])
+def test_sizes_are_finite_and_bounded(bad):
+    with pytest.raises(ValidationError):
+        Envelope(x_mm=bad, y_mm=10.0, z_mm=10.0)
+
+
+def test_a_spec_cannot_carry_unbounded_lists():
+    with pytest.raises(ValidationError):
+        make_spec((60.0, 40.0, 20.0), features=[HOLE] * 201)
+    many = [(60.0 * i / 6000, 0.0) for i in range(6000)] + [(30.0, 20.0)]
+    with pytest.raises(ValidationError):
+        make_spec((60.0, 40.0, 20.0), front=outline(many))

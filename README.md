@@ -55,6 +55,8 @@ Requirements: Python 3.11, [uv](https://docs.astral.sh/uv/), Node 20.
 
 Docker runs the built React app and FastAPI backend together on one port. The local `.env` is loaded at runtime but is never copied into the image. If `.env` is missing, the offline path still works.
 
+**Access token.** The API answers only the computer it runs on unless `S2C_ACCESS_TOKEN` is set in `.env`. Docker's port forwarding makes every browser look like another device, so set the token before `docker compose up`; the web app asks for it once and keeps it in that browser. Calls are also rate-limited per client, and at most two parts build at once.
+
 ```bash
 docker compose up --build
 ```
@@ -90,7 +92,7 @@ cd web && npm install && npm run build && cd ..
 uv run uvicorn s2c.web.server:app --host 0.0.0.0 --port 8000
 ```
 
-Open `http://localhost:8000`, or `http://<your-LAN-IP>:8000` on a phone on the same network. Rebuild `web/` after any frontend change.
+Open `http://localhost:8000`, or `http://<your-LAN-IP>:8000` on a phone on the same network (set `S2C_ACCESS_TOKEN` in `.env` first: the phone is asked for it once). Rebuild `web/` after any frontend change.
 
 **Development, two processes, hot reload.** Vite on :5173 proxies `/api` to the API on :8000:
 

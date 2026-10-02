@@ -39,7 +39,8 @@ export interface ExportFile { url: string; name: string; size_bytes: number }
 export interface ExportResult { files: Record<string, ExportFile>; zip_url: string | null; print_time_s: number | null; filament_g: number | null; warnings: string[]; abstain: Abstain | null }
 
 export type ChatRole = 'user' | 'assistant';
-export interface ChatMessage { role: ChatRole; content: string }
+/** `sig`: the server's signature on its own reply, sent back with the conversation. */
+export interface ChatMessage { role: ChatRole; content: string; sig?: string }
 export type PartType = 'plate' | 'l_bracket' | 'spacer' | 'flange';
 export interface PartRequest { type: PartType; values: Record<string, number>; holes: { a_mm: number; b_mm: number; diameter_mm: number }[] }
-export interface ChatResponse { reply: string; options: string[]; part: PartRequest | null; missing: string[]; spec: Spec | null; model: string }
+export interface ChatResponse { reply: string; sig: string; options: string[]; part: PartRequest | null; missing: string[]; spec: Spec | null; model: string }

@@ -1,6 +1,7 @@
 import type {
   AiSettings, Analysis, ChatMessage, ChatResponse, Example, ExportResult, Face, GeometrySettings, Job, ModelResult, PrintSettings, Spec, Status,
 } from './types';
+import { storeToken, storedToken, withToken } from '../lib/auth';
 
 export class ApiError extends Error {
   status: number;
@@ -21,10 +22,10 @@ const FALLBACK: Record<number, string> = {
   415: 'That file is not an image.',
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, asked = false): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(`${API_BASE}${path}`, init);
+    res = await fetch(`${API_BASE}${path}`, withToken(init, storedToken()));
   } catch {
     throw new ApiError(0, FALLBACK[0]);
   }
@@ -37,6 +38,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const err = body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
       ? (body as { error: string }).error
       : FALLBACK[res.status] ?? `Something went wrong (${res.status}). Try again.`;
+    if (res.status === 401 && !asked) {  // the server wants its access token: ask once, then retry
+      const token = window.prompt(`${err}
+
+Access token:`)?.trim();
+      if (token) {
+        storeToken(token);
+        return request<T>(path, init, true);
+      }
+    }
     throw new ApiError(res.status, err);
   }
   return body as T;
