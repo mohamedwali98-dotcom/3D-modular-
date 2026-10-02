@@ -549,3 +549,12 @@ def test_building_the_model_counts_as_using_the_job():
     job.used = before = time.time() - 60  # used a minute ago: well inside its hour
     r = c.post("/api/model", json={"request_id": job.job_id, "spec": spec})
     assert r.status_code == 200 and job.used > before
+
+
+def test_an_edit_to_a_field_that_does_not_exist_is_refused():
+    """A path that names no editable value is refused with a plain sentence, never written into a feature or
+    silently dropped."""
+    job = analyze()
+    for path in ("features[0].type", "envelope.w_mm"):
+        r = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": {path: 1}})
+        assert r.status_code == 400 and path in r.json()["error"]

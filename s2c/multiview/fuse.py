@@ -285,9 +285,10 @@ def features_from(observations: list[Observation], env: S.Envelope, edges: dict[
             feats.append({"type": "hole", "face": o.face, "a_mm": a, "b_mm": b, "diameter_mm": d,
                           "depth_mm": depth})
             pos = _outline_prov(o)
-            prov.update({f"features[{k}].a_mm": pos, f"features[{k}].b_mm": pos, f"features[{k}].diameter_mm": d_prov})
+            prov.update({S.feature_path(k, "a_mm"): pos, S.feature_path(k, "b_mm"): pos,
+                         S.feature_path(k, "diameter_mm"): d_prov})
             if depth is not None:
-                prov[f"features[{k}].depth_mm"] = depth_prov
+                prov[S.feature_path(k, "depth_mm")] = depth_prov
     return feats, prov
 
 
@@ -552,7 +553,7 @@ def snap(data: dict, clearance: str = "medium", kinds: dict | None = None) -> No
     prov, snapped = data["provenance"], data.setdefault("snapped", [])
     for k, f in enumerate(data["features"]):
         for name in ("a_mm", "b_mm", "diameter_mm", "depth_mm", "width_mm", "length_mm", "height_mm"):
-            path = f"features[{k}].{name}"
+            path = S.feature_path(k, name)
             if f.get(name) is None or prov.get(path) not in SNAPPABLE:
                 continue
             hole = name == "diameter_mm" and f.get("type", "hole") == "hole"  # clearance sizes are for holes
@@ -591,7 +592,7 @@ def _drop_features(data: dict, removed: set[int]) -> None:
         if not m:
             prov[path] = p
         elif int(m.group(1)) in new_index:
-            prov[f"features[{new_index[int(m.group(1))]}].{m.group(2)}"] = p
+            prov[S.feature_path(new_index[int(m.group(1))], m.group(2))] = p
     data["provenance"] = prov
 
 

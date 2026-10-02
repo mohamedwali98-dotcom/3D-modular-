@@ -23,6 +23,7 @@ from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from s2c import MAX_PIXELS
+from s2c.multiview import edits
 from s2c.multiview.artifacts import ROOT as ARTIFACT_ROOT
 from s2c.multiview.artifacts import build_part, bundle, export_part, sweep
 from s2c.multiview.pipeline import IOU_GREEN, ImageInput, MvPipeline, default_pipeline
@@ -228,7 +229,11 @@ def merge(body: MergeBody, pipe: Pipe) -> dict:
     job = _job(body.request_id)
     if job.observed is None:
         raise HTTPException(404, UNKNOWN)
-    return jobs.merge(job, pipe, body.user_values, body.accepted, body.rejected)
+    try:
+        values = edits.parse(body.user_values)
+    except edits.EditError as e:
+        raise HTTPException(400, f"{e.path} cannot be edited.") from e
+    return jobs.merge(job, pipe, values, body.accepted, body.rejected)
 
 
 class ModelBody(BaseModel):

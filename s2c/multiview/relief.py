@@ -593,6 +593,6 @@ def pocket_provenance(pockets: list[dict], start: int, inferred: bool = False) -
         guessed = p.pop("_depth_default", False)
         for name in ("a_mm", "b_mm", "width_mm", "height_mm", "depth_mm", "diameter_mm"):
             if p.get(name) is not None:
-                prov[f"features[{k}].{name}"] = ("default" if guessed and name == "depth_mm"
+                prov[S.feature_path(k, name)] = ("default" if guessed and name == "depth_mm"
                                                  else "inferred" if inferred else POCKET_PROV)
     return prov

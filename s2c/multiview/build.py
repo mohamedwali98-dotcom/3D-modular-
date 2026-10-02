@@ -18,6 +18,7 @@ from s2c.multiview.spec import (
     MultiViewSpec,
     Outline,
     face_size,
+    feature_path,
 )
 
 
@@ -224,7 +225,7 @@ def _finish_part(solid: cq.Workplane, spec: MultiViewSpec, notes: list[str] | No
     """Holes, slots, then fillets and chamfers, on a solid that already passed _check."""
     left_out = []
     for i, f in enumerate(spec.features):
-        prov = spec.provenance.get(f"features[{i}].diameter_mm", spec.provenance.get(f"features[{i}].width_mm"))
+        prov = spec.provenance.get(feature_path(i, "diameter_mm"), spec.provenance.get(feature_path(i, "width_mm")))
         cut = _cut_feature(solid, f, spec.envelope, typed=prov in ("user_written", "user_edited"))
         if cut is solid:
             typed_too = " Type its size to keep it." if not isinstance(f, (FacePocket, FaceBoss)) else ""

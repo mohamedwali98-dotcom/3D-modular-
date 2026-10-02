@@ -159,13 +159,22 @@ def numeric_names(model: BaseModel) -> list[str]:
             if k != "type" and not isinstance(v, bool) and isinstance(v, (int, float))]
 
 
+def feature_path(i: int, name: str) -> str:
+    """The provenance (and edit) key of a feature's value: the one spelling every module uses."""
+    return f"features[{i}].{name}"
+
+
+def finish_path(i: int, name: str) -> str:
+    return f"finishes[{i}].{name}"
+
+
 def numeric_field_paths(spec: MultiViewSpec) -> list[str]:
     paths = ["envelope.x_mm", "envelope.y_mm", "envelope.z_mm"]
     paths += [f"views.{face}.outer" for face in CANONICAL_FACES]
     for i, f in enumerate(spec.features):
-        paths += [f"features[{i}].{n}" for n in numeric_names(f)]
+        paths += [feature_path(i, n) for n in numeric_names(f)]
     for i, f in enumerate(spec.finishes):
-        paths += [f"finishes[{i}].{n}" for n in numeric_names(f)]
+        paths += [finish_path(i, n) for n in numeric_names(f)]
     return paths
 
 

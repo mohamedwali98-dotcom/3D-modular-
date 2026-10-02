@@ -8,7 +8,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from s2c.multiview.spec import MultiViewSpec
+from s2c.multiview.spec import MultiViewSpec, feature_path
 
 PartType = Literal["plate", "l_bracket", "spacer", "flange"]
 REQUIRED: dict[str, tuple[str, ...]] = {
@@ -90,7 +90,7 @@ def spec_from_request(req: PartRequest) -> MultiViewSpec:
         for i, hole in enumerate(req.holes):
             features.append({"type": "hole", "face": "front", "a_mm": hole.a_mm, "b_mm": hole.b_mm,
                              "diameter_mm": hole.diameter_mm})
-            prov.update({f"features[{i}].{k}": "user_written" for k in ("a_mm", "b_mm", "diameter_mm")})
+            prov.update({feature_path(i, k): "user_written" for k in ("a_mm", "b_mm", "diameter_mm")})
     elif t == "l_bracket":
         a, b, w, th = v["leg_a_mm"], v["leg_b_mm"], v["width_mm"], v["thickness_mm"]
         env = (a, b, w)
@@ -111,8 +111,8 @@ def spec_from_request(req: PartRequest) -> MultiViewSpec:
                 features.append({"type": "hole", "face": "front", "a_mm": round(c + rb * math.cos(ang), 4),
                                  "b_mm": round(c + rb * math.sin(ang), 4),
                                  "diameter_mm": v["bolt_hole_diameter_mm"]})
-                prov.update({f"features[{i}].a_mm": "scaled", f"features[{i}].b_mm": "scaled",
-                             f"features[{i}].diameter_mm": "user_written"})
+                prov.update({feature_path(i, "a_mm"): "scaled", feature_path(i, "b_mm"): "scaled",
+                             feature_path(i, "diameter_mm"): "user_written"})
     x, y, z = env
     return MultiViewSpec.model_validate({
         "envelope": {"x_mm": x, "y_mm": y, "z_mm": z},

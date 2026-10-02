@@ -20,7 +20,7 @@ from OCP.HLRAlgo import HLRAlgo_Projector
 from OCP.HLRBRep import HLRBRep_Algo, HLRBRep_HLRToShape
 
 from s2c.multiview.settings import EDGE_LABELS
-from s2c.multiview.spec import CANONICAL_OF, FaceHole, Fillet, MultiViewSpec, to_canonical
+from s2c.multiview.spec import CANONICAL_OF, FaceHole, Fillet, MultiViewSpec, feature_path, to_canonical
 
 DRAWING_FORMATS = ("dxf", "svg", "pdf")
 DRAWING_FILES = {"dxf": "drawing.dxf", "svg": "drawing.svg", "pdf": "drawing.pdf"}
@@ -114,7 +114,7 @@ def drawing_document(solid, spec: MultiViewSpec) -> ezdxf.document.Drawing:
                                  override=DIM_STYLE, text=f"<> ({f.face})",  # ezdxf prepends its own diameter
                                  dxfattribs={"layer": "DIMENSIONS"}).render()   # sign to "<>"; don't add a second
         else:
-            notes.append(f"Feature {k + 1}: {feature_note(f, spec.provenance.get(f'features[{k}].depth_mm'))}")
+            notes.append(f"Feature {k + 1}: {feature_note(f, spec.provenance.get(feature_path(k, 'depth_mm')))}")
     for finish in spec.finishes:
         if isinstance(finish, Fillet):
             notes.append(f"Fillet R{finish.radius_mm:g} on {EDGE_LABELS[finish.edges]}")

@@ -8,7 +8,7 @@ import math
 from s2c.multiview import build as _build_mod
 from s2c.multiview.build import BuildError
 from s2c.multiview.settings import GeometrySettings
-from s2c.multiview.spec import MultiViewSpec
+from s2c.multiview.spec import MultiViewSpec, finish_path
 
 FINISH_LIMIT = 0.45  # of the smallest envelope side
 
@@ -30,7 +30,7 @@ def apply_geometry(spec: MultiViewSpec, geometry: GeometrySettings) -> tuple[Mul
     data = spec.model_dump()
     k = len(data["finishes"])
     data["finishes"].append({"type": geometry.finish, "edges": geometry.finish_edges, "radius_mm": size})
-    data["provenance"][f"finishes[{k}].radius_mm"] = "user_edited"
+    data["provenance"][finish_path(k, "radius_mm")] = "user_edited"
     data["warnings"] = [*data["warnings"], *warnings]
     return MultiViewSpec.model_validate(data), warnings
 
