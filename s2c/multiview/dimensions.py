@@ -96,7 +96,7 @@ def read_dimensions(image_bgr: np.ndarray, ink: np.ndarray, bodies: list[tuple[B
         from s2c.sketch.text import find_text_boxes
         segs, lines = _slanted(notes, length, stroke or 2.0)
         text_ink = cv2.subtract(notes, cv2.dilate(lines, np.ones((3, 3), np.uint8)))
-        boxes = find_text_boxes(notes, stroke or 2.0)
+        boxes = [b for b in (_glyphs(text_ink, b) for b in find_text_boxes(notes, stroke or 2.0)) if b]
     else:
         h_lines = cv2.morphologyEx(notes, cv2.MORPH_OPEN, np.ones((1, length), np.uint8))
         v_lines = cv2.morphologyEx(notes, cv2.MORPH_OPEN, np.ones((length, 1), np.uint8))
@@ -108,18 +108,23 @@ def read_dimensions(image_bgr: np.ndarray, ink: np.ndarray, bodies: list[tuple[B
         if _solid(text_ink, box):
             continue  # an arrowhead or a filled mark: never a number
         line = _line_for(box, segs)
+        if kind == "sketch" and line is None and _stroke_mark(text_ink, box, stroke or 2.0):
+            continue  # a dash or a tick off any dimension line reads as "1": never a number
         if line is not None or _near_view(box, bodies, long):  # a value on its line, or a Ø / R callout
             words.append((box, line))
     words = sorted(words, key=lambda w: (w[1] is None, -w[0][2] * w[0][3]))[:MAX_WORDS]
     if not words:
         return SheetScale(None)
     image = image_bgr if image_bgr.ndim == 3 else cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
+    if kind == "sketch":  # read the written glyphs alone: a hand line through a crop reads as letters
+        image = cv2.cvtColor(255 - text_ink, cv2.COLOR_GRAY2BGR)
     crops, owner = [], []
     for k, ((x, y, w, h), line) in enumerate(words):
         m = max(3, round(0.15 * min(w, h)))
         tile = image[max(0, y - m): y + h + m, max(0, x - m): x + w + m]
-        upright = line is None or line[0] == "h"
-        turned = not upright or (line is None and h > 1.3 * w)
+        along = line is not None and line[0] == "v"
+        upright = not along or kind == "sketch"  # a hand often writes upright beside a vertical line
+        turned = along or (line is None and h > 1.3 * w)
         turns = ([None] if upright else []) + ([cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]
                                                 if turned else [])
         source = _mapped((x, y, w, h), to_source)
@@ -137,9 +142,28 @@ def read_dimensions(image_bgr: np.ndarray, ink: np.ndarray, bodies: list[tuple[B
         linear = line is not None and what == "linear"
         found[k] = Dimension(value, what, text, box, float(line[3] - line[2] + 1) if linear else None, confirmed,
                              line if linear else None)
+    dims = _one_per_line(list(found.values()))
     if kind == "sketch":  # a sketch is not drawn to scale: its values are sizes, never a scale (rule 2)
-        return SheetScale(None, dimensions=list(found.values()))
-    return _agree(list(found.values()))
+        return SheetScale(None, dimensions=dims)
+    return _agree(dims)
+
+
+def _one_per_line(dims: list[Dimension]) -> list[Dimension]:
+    """One value per dimension line: the one written nearest its middle. Another number that found the same line
+    (a callout near its end) is kept as read, without the line."""
+    by_line: dict[tuple, list[Dimension]] = {}
+    for d in dims:
+        if d.line is not None:
+            by_line.setdefault(d.line, []).append(d)
+    for (axis, _, s, e), group in by_line.items():
+        def off(d: Dimension, axis=axis, mid=(s + e) / 2) -> float:
+            x, y, w, h = d.box
+            return abs((x + w / 2 if axis == "h" else y + h / 2) - mid)
+        keep = min(group, key=off)
+        for d in group:
+            if d is not keep:
+                d.line, d.span_px = None, None
+    return dims
 
 
 def _slanted(notes: np.ndarray, length: int, stroke: float):
@@ -151,7 +175,7 @@ def _slanted(notes: np.ndarray, length: int, stroke: float):
     for axis, grow, run in (("h", (t, 1), (1, length)), ("v", (1, t), (length, 1))):
         band = cv2.morphologyEx(cv2.dilate(notes, np.ones(grow, np.uint8)), cv2.MORPH_OPEN, np.ones(run, np.uint8))
         found = cv2.bitwise_and(notes, band)
-        segs[axis] = _segments(found, axis)
+        segs[axis] = [seg for seg in _segments(found, axis) if seg[2] - seg[1] + 1 >= length]  # no crumbs
         lines |= found
     return segs, lines
 
@@ -175,6 +199,28 @@ def _solid(text_ink: np.ndarray, box: Box) -> bool:
         return True
     dist = cv2.distanceTransform(sub, cv2.DIST_L2, 3)
     return float(dist.max()) > 0.3 * min(w, h)  # a triangle is a third of its size thick; bold text a quarter
+
+
+def _glyphs(text_ink: np.ndarray, box: Box) -> Box | None:
+    """The box shrunk to the written glyphs in it, without the lines that ran into it; None when none are left."""
+    x, y, w, h = box
+    ys, xs = np.nonzero(text_ink[y: y + h, x: x + w])
+    if len(xs) < 10:
+        return None
+    return x + int(xs.min()), y + int(ys.min()), int(np.ptp(xs)) + 1, int(np.ptp(ys)) + 1
+
+
+def _stroke_mark(text_ink: np.ndarray, box: Box, stroke: float) -> bool:
+    """The box holds one straight stroke (a dash of a miter or centre line, a tick), not written glyphs."""
+    x, y, w, h = box
+    sub = (text_ink[y: y + h, x: x + w] > 0).astype(np.uint8)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(sub, connectivity=8)
+    big = [i for i in range(1, n) if stats[i][4] >= 0.2 * sub.sum()]
+    if len(big) != 1:
+        return False
+    ys, xs = np.nonzero(sub)
+    (_, _), (a, b), _ = cv2.minAreaRect(np.column_stack([xs, ys]).astype(np.float32))
+    return min(a, b) <= 2.5 * stroke and max(a, b) >= 2.5 * min(a, b)
 
 
 def _near_view(box: Box, bodies, long: int) -> bool:

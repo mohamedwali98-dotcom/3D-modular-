@@ -124,7 +124,7 @@ def _face_plane(face: str, env: Envelope, offset: float = 0.0) -> cq.Plane:
 BOSS_CLEAR = 0.15  # the cut around a pin reaches this share of its diameter (1 mm at least) past it on each side
 
 
-def _cut_feature(solid: cq.Workplane, f, env: Envelope) -> cq.Workplane:
+def _cut_feature(solid: cq.Workplane, f, env: Envelope, typed: bool = True) -> cq.Workplane:
     a_len, b_len = face_size(f.face, env)
     if not (0 <= f.a_mm <= a_len and 0 <= f.b_mm <= b_len):
         raise BuildError("feature_outside_part", "A hole or slot lies outside the part. Check its position.")
@@ -141,7 +141,12 @@ def _cut_feature(solid: cq.Workplane, f, env: Envelope) -> cq.Workplane:
         wp, dist = cq.Workplane(_face_plane(f.face, env)), f.depth_mm
     wp = wp.center(f.a_mm, f.b_mm)
     shape = wp.circle(f.diameter_mm / 2) if isinstance(f, FaceHole) else wp.slot2D(f.length_mm, f.width_mm, f.angle_deg)
-    return solid.cut(shape.extrude(-dist))
+    out = solid.cut(shape.extrude(-dist))
+    pieces = out.solids().vals()
+    if not typed and (not pieces or len(pieces) > len(solid.solids().vals()) or not all(p.isValid() for p in pieces)):
+        log.warning("a %s read on %s would split the part or leave no valid solid; left out", f.type, f.face)
+        return solid  # read from a drawn circle, not typed: as for pockets, the reading is wrong, not the part
+    return out
 
 
 def _open_cut(f: FacePocket | FaceBoss, env: Envelope) -> cq.Workplane:
@@ -216,8 +221,9 @@ def build(spec: MultiViewSpec) -> cq.Workplane:
 
 def _finish_part(solid: cq.Workplane, spec: MultiViewSpec) -> cq.Workplane:
     """Holes, slots, then fillets and chamfers, on a solid that already passed _check."""
-    for f in spec.features:
-        solid = _cut_feature(solid, f, spec.envelope)
+    for i, f in enumerate(spec.features):
+        prov = spec.provenance.get(f"features.{i}.diameter_mm", spec.provenance.get(f"features.{i}.width_mm"))
+        solid = _cut_feature(solid, f, spec.envelope, typed=prov in ("user_written", "user_edited"))
     for finish in spec.finishes:
         solid = _apply_finish(solid, finish)
     _check(solid)

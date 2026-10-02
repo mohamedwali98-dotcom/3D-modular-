@@ -148,3 +148,17 @@ def test_read_values_marks_which_values_the_readers_agree_on():
 
     got = {r.value_mm: r.confirmed for r in read_values(img, o, svc(lambda crop: ("40", 0.95), batch))}
     assert got == {60.0: False, 40.0: True}
+
+
+def test_a_number_spelled_glyph_by_glyph_is_one_value():
+    """A handwriting reader spells a written number out ("2 5", "Ø 6"); two numbers are never joined ("12 48")."""
+    assert parse_value("2 5") == (25.0, "linear")
+    assert parse_value("Ø 6") == (6.0, "diameter")
+    assert parse_value("1 2 5") == (125.0, "linear")
+    assert parse_value("12 48") is None
+    assert parse_value("1 25") is None
+
+
+def test_a_stray_stroke_beside_a_number_is_not_part_of_it():
+    assert parse_value("5 -") == (5.0, "linear")
+    assert parse_value("' 60") == (60.0, "linear")

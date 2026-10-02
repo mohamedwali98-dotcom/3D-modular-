@@ -110,10 +110,12 @@ class SheetRead:
     page: Page | None = None    # the page read, with its mapping back to the upload
 
     def inputs(self):
-        """The views as pipeline inputs: kind "drawing", the named face, and the sheet's scale when it was read."""
+        """The views as pipeline inputs: kind "drawing", the named face, and the sheet's scale when it was read.
+        Their numbers were read on the sheet (link_sizes, link_diameters): a crop is never read again."""
         from s2c.multiview.pipeline import ImageInput
         return [ImageInput(c.png, c.face, "drawing", mm_per_px=self.scale.mm_per_px,
-                           scale_confirmed=self.scale.confirmed) for c in self.crops]
+                           scale_confirmed=self.scale.confirmed, numbers=False, line_art=self.kind == "sketch")
+                for c in self.crops]
 
 
 def _crops(sheet: Sheet, image: np.ndarray, naming: Naming, keep_unnamed: bool = False) -> list[SheetCrop]:

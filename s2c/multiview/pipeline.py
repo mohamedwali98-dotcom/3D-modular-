@@ -66,6 +66,8 @@ class ImageInput:
     kind: str | None = None
     mm_per_px: float | None = None  # a known scale in the image's own pixels: a drawing sheet's dimensions
     scale_confirmed: bool = True    # False: sizes from that scale are suggestions the user confirms
+    numbers: bool = True            # False: its numbers were read already (a view cropped from a sheet)
+    line_art: bool = False          # True: known to be a line drawing (a sketch view drawn again from its strokes)
 
 
 @dataclass
@@ -185,13 +187,13 @@ class MvPipeline:
                 bgr, mm_per_px = ref.image, ref.mm_per_px
                 mask_out = (ref.bbox,) if ref.bbox else ()
             _emit(progress, key="outline", state="running", index=i)
-            outline, rescued = self._outline(bgr, mask_out, label.input_kind)
+            outline, rescued = self._outline(bgr, mask_out, label.input_kind, item.line_art)
             if isinstance(outline, S.MvAbstain):
                 return outline
             _emit(progress, key="outline", state="done", index=i, outline=outline.outer.astype(int).tolist(),
                   circles=[{"cx": c.cx, "cy": c.cy, "d": c.d} for c in outline.circles])
             values = []
-            if not reads or label.input_kind == "photo":
+            if not reads or label.input_kind == "photo" or not item.numbers:
                 _emit(progress, key="read", state="skipped", index=i)
             else:
                 _emit(progress, key="read", state="running", index=i)
@@ -214,9 +216,10 @@ class MvPipeline:
             observed.warnings += self._depths(observed, excluded)
         return self._merge(observed)
 
-    def _outline(self, bgr: np.ndarray, mask_out, kind: str) -> tuple[PixelOutline | S.MvAbstain, bool]:
+    def _outline(self, bgr: np.ndarray, mask_out, kind: str,
+                 line_art: bool = False) -> tuple[PixelOutline | S.MvAbstain, bool]:
         """The outline, and whether Qwen-Image had to redraw the sketch (spec 2026-09-23 section 8)."""
-        outline = extract(bgr, mask_out, drawing=kind == "drawing")
+        outline = extract(bgr, mask_out, drawing=kind == "drawing", line_art=line_art)
         if (isinstance(outline, S.MvAbstain) and outline.reason == "no_outline" and kind != "photo"
                 and self.rescue_enabled and self.image_gen is not None):
             fixed = rescue_sketch(bgr, self.image_gen, self.seed)

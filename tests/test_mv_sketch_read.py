@@ -147,3 +147,78 @@ def test_a_part_dimension_is_read_but_not_used_as_a_size():
     spec = pipe.fuse(observed)
     assert spec.envelope.x_mm == 80
     assert any("Read 15" in w and "not used" in w for w in spec.warnings)
+
+
+def test_a_sheets_views_are_not_read_again_for_numbers():
+    """The numbers of a sheet are read once, on the sheet; a cropped view never reads its stubs and ticks as
+    sizes (a "1" from a tick would be a silently wrong size)."""
+    photo, words = hand_photo(_block(), faces=THIRD, layout="third")
+    read = read_drawing(photo, "third", service=_service(words))
+    assert all(not i.numbers for i in read.inputs())
+
+
+def test_a_lone_straight_stroke_is_no_number():
+    """A dash of the miter line reads as "1"; off any dimension line, a single straight stroke is not read."""
+    import s2c.multiview.dimensions as dm
+    ink = np.zeros((200, 300), np.uint8)
+    cv2.line(ink, (100, 150), (130, 120), 255, 3)          # a slanted dash
+    cv2.putText(ink, "80", (180, 120), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 1.0, 255, 2)
+    assert dm._stroke_mark(ink, (95, 115, 40, 40), 3.0)
+    assert not dm._stroke_mark(ink, (175, 95, 60, 35), 3.0)
+
+
+def test_one_dimension_line_carries_one_value():
+    """A second number near a dimension line's end (another callout) is read, but the line's value is the one
+    written over its middle."""
+    import s2c.multiview.dimensions as dm
+    line = ("h", 100.0, 0, 400)
+    dims = [dm.Dimension(60.0, "linear", "60", (180, 70, 40, 25), 401.0, True, line),
+            dm.Dimension(6.0, "linear", "6", (405, 105, 20, 25), 401.0, True, line)]
+    kept = dm._one_per_line(dims)
+    assert [d.text for d in kept if d.line] == ["60"] and len(kept) == 2
+
+
+def test_the_real_sketch_end_to_end(tmp_path):
+    """The phone photo of a pen sketch (tests/golden_sketch/real_bracket_1) with the real handwriting reader:
+    three faces named, the clear numbers read, each overall size the user's own, a misread number never used
+    silently, and the part builds once the user confirms what was not read. Skipped without the trocr extra."""
+    import json
+
+    import pytest
+    pytest.importorskip("transformers")
+    from s2c.multiview.pipeline import default_pipeline
+    from s2c.multiview.sheet_read import link_diameters
+
+    pipe = default_pipeline()
+    if pipe.reader is None and pipe.batch_reader is None:
+        pytest.skip("no reader configured")
+    truth = json.loads((GOLDEN / "real_bracket_1" / "expected.json").read_text())
+    read = read_drawing(cv2.imread(str(GOLDEN / "real_bracket_1" / "image.jpg")), "auto", reader=pipe.reader,
+                        service=pipe.reading())
+    faces = sorted(f for f in read.naming.faces if f != "auto")
+    assert faces == sorted(THIRD) or (faces == sorted(("bottom", "front", "left"))
+                                      and read.naming.projection_source == "setting")
+    wanted = [(d["value"], d["kind"]) for d in truth["dimensions"]]
+    got = [(d.value_mm, d.kind) for d in read.scale.dimensions]
+    matched = sum(min(wanted.count(v), got.count(v)) for v in set(wanted))
+    assert matched >= 3, got  # 60, 25 and 3 today; the Ø callouts tangled with their leaders are not yet read
+    observed = pipe.observe(read.inputs())
+    link_sizes(read, observed)
+    link_diameters(read, observed)
+    draft = pipe.fuse(observed)
+    known = draft.partial["known"] if isinstance(draft, S.MvAbstain) else draft.envelope.model_dump()
+    assert known["envelope.x_mm" if isinstance(draft, S.MvAbstain) else "x_mm"] == 60
+    assert known["envelope.z_mm" if isinstance(draft, S.MvAbstain) else "z_mm"] == 25
+    spec = pipe.fuse(observed, {"envelope.y_mm": 25})
+    assert spec.provenance["envelope.x_mm"] == "user_written"
+    built = pipe.build(spec, tmp_path)
+    assert not isinstance(built, S.MvAbstain), built
+
+
+def test_a_busy_sketch_view_is_still_read_as_lines():
+    """A sketch view dense with hidden lines is a line drawing all the same (it was drawn again from its strokes):
+    its outline has no openings made of the gaps between lines."""
+    read = read_drawing(cv2.imread(str(GOLDEN / "real_bracket_1" / "image.jpg")), "third")
+    assert all(i.line_art for i in read.inputs())
+    obs = MvPipeline().observe(read.inputs())
+    assert all(o.outline.line_art and not o.outline.inner for o in obs.observations)

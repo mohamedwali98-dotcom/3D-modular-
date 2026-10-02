@@ -113,9 +113,11 @@ def is_thin_edge_view(contour, area: float, h: int, w: int) -> bool:
 
 
 def extract(image_bgr: np.ndarray, mask_out=(), band: int = EDGE_BAND_PX,
-            drawing: bool = False) -> PixelOutline | MvAbstain:
+            drawing: bool = False, line_art: bool = False) -> PixelOutline | MvAbstain:
     """`drawing` (input kind "drawing") allows the line-art rules. Line art is told by its ink fill, never by
-    the kind alone, so a filled render sent as a drawing keeps the rules below."""
+    the kind alone, so a filled render sent as a drawing keeps the rules below. `line_art` says the image is
+    known to be drawn in lines (a sketch view drawn again from its strokes): a view dense with hidden lines then
+    keeps the line-art rules too."""
     ink = ink_mask(image_bgr, mask_out)
     fg = _closed(ink)
     h, w = fg.shape
@@ -128,6 +130,8 @@ def extract(image_bgr: np.ndarray, mask_out=(), band: int = EDGE_BAND_PX,
                          remedy="Retake on a plain background with the whole part in frame.")
     filled = np.zeros_like(fg)
     cv2.drawContours(filled, [outer], -1, 255, -1)
+    if line_art:
+        return _line_art(ink, fg, outer, filled, band, _stroke(cv2.bitwise_and(ink, filled)))
     if drawing and cv2.countNonZero(cv2.bitwise_and(fg, filled)) < LINE_ART_FILL * cv2.countNonZero(filled):
         stroke = _stroke(cv2.bitwise_and(ink, filled))
         if stroke <= LINE_ART_STROKE * max(h, w) or (

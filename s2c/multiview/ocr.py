@@ -42,7 +42,16 @@ class Linked:
     hole_index: int | None
 
 
+STRAY = "-'\",:;`"  # marks a reader returns for a tick or a dash beside the number
+
+
 def parse_value(text: str) -> tuple[float, str] | None:
+    tokens = [tok for tok in text.split() if tok.strip(STRAY)]  # a tick or a dash beside a number is no glyph
+    text = " ".join(tokens)
+    if len(tokens) > 1 and all(len(tok) == 1 for tok in tokens):
+        if re.fullmatch(r"0\d+", "".join(tokens)):
+            return None  # "0 1" is no number
+        text = "".join(tokens)  # a handwriting reader spells a written number out glyph by glyph: "2 5" is 25
     if re.search(r"\d\s+\d", text):
         return None  # "12 48" is two values or a misread, never 1248
     t = text.strip().replace(" ", "").replace(",", ".")
