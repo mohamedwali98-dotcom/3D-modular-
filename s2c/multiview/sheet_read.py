@@ -440,7 +440,9 @@ def _read(sheet: Sheet, image: np.ndarray, projection: str, reader, service, kee
 
 DIAMETER_OFF = 0.10  # a written Ø further than this from the measured circle is flagged, not trusted
 OVERALL = 0.08       # a dimension line spanning a view's whole width or height within this share is its size...
-OVERALL_SKETCH = 0.15  # ...on a hand sketch, within this share
+OVERALL_SKETCH = 0.15  # ...on a hand sketch, within this share, its extension lines standing at the view's edges
+EXTENSION = 0.065    # ...within this share of its size (a dimension of part of the view stands inside it)
+EXTENSION_COVER = 0.7  # an extension line crosses this share of the gap between the dimension line and the view
 
 
 def _overall(dims, sheet: Sheet, naming: Naming, image: np.ndarray, tol: float) -> None:
@@ -460,11 +462,26 @@ def _overall(dims, sheet: Sheet, naming: Naming, image: np.ndarray, tol: float) 
             lo, size, near, far = (x, w, y, y + h) if axis == "h" else (y, h, x, x + w)
             if abs(s - lo) > tol * size or abs(e - (lo + size)) > tol * size or near <= pos <= far:
                 continue
+            if sheet.stroke_px and not _extended(ink, axis, pos, lo, size, near, far, sheet.stroke_px):
+                continue  # a sketch's dimension lines lose their ends: its extension lines say where it stops
             gap = min(abs(pos - near), abs(pos - far))
             if gap <= 0.5 * max(w, h) and (best is None or gap < best[0]):
                 best = (gap, i)
         if best is not None:
             d.view, d.axis = best[1], "a" if axis == "h" else "b"
+
+
+def _extended(ink: np.ndarray, axis: str, pos: float, lo: int, size: int, near: int, far: int,
+              stroke: float) -> bool:
+    """Whether extension lines cross the gap between a dimension line and the view at both of the view's edges."""
+    t = max(2, round(2 * stroke))
+    a, b = (round(pos) + t, near - t) if pos < near else (far + t, round(pos) - t)
+    if b - a < 3:
+        return False
+    band = (ink if axis == "h" else ink.T)[a:b] > 0
+    band = cv2.dilate(band.astype(np.uint8), np.ones((1, max(3, round(1.5 * stroke)) | 1), np.uint8))
+    crossing = np.flatnonzero(band.mean(axis=0) >= EXTENSION_COVER)
+    return all(np.any(np.abs(crossing - edge) <= EXTENSION * size) for edge in (lo, lo + size))
 
 
 def link_sizes(read: SheetRead, observed) -> None:

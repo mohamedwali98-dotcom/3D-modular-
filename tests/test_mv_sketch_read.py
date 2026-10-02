@@ -185,6 +185,17 @@ def test_a_part_dimension_is_read_but_not_used_as_a_size():
     assert any("Read 15" in w and "not used" in w for w in spec.warnings)
 
 
+def test_a_dimension_that_stops_short_of_the_view_is_no_overall_size():
+    """A 72 or a 76 written from the left edge of an 80 mm stepped block sizes a part of it: its extension line
+    stands inside the view, so it never becomes the part's width (review focus 4)."""
+    part = _cut(_block(), 70, 40, 0, 80, 60, 70)
+    for span in (72, 76):
+        photo, words = hand_photo(part, faces=THIRD, layout="third", dims=False,
+                                  extra=[("front", 0, span, "a", str(span))])
+        read = read_drawing(photo, "third", service=_service(words))
+        assert [d.text for d in read.scale.dimensions if d.view is not None] == [], span
+
+
 def test_a_sheets_views_are_not_read_again_for_numbers():
     """The numbers of a sheet are read once, on the sheet; a cropped view never reads its stubs and ticks as
     sizes (a "1" from a tick would be a silently wrong size)."""
