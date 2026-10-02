@@ -17,7 +17,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
 LOCAL = frozenset({"127.0.0.1", "::1", "localhost"})
-OPEN = (("GET", "/api/status"), ("GET", "/api/examples"), ("GET", "/api/artifacts/"))
+OPEN_PATHS = frozenset({"/api/status", "/api/examples"})  # GET (and HEAD) these exact paths...
+OPEN_PREFIXES = ("/api/examples/", "/api/artifacts/")      # ...and anything under these
 WINDOW_S = 60.0
 LIMITS = {("POST", "/api/analyze"): 10, ("POST", "/api/merge"): 60, ("POST", "/api/model"): 30,
           ("POST", "/api/export"): 10, ("POST", "/api/chat"): 20}  # calls per client per minute
@@ -35,7 +36,9 @@ def access_token() -> str | None:
 
 
 def _open(method: str, path: str) -> bool:
-    return method in ("OPTIONS", "HEAD") or any(method == m and path.startswith(p) for m, p in OPEN)
+    if method == "OPTIONS":  # a CORS preflight carries no credentials
+        return True
+    return method in ("GET", "HEAD") and (path in OPEN_PATHS or path.startswith(OPEN_PREFIXES))
 
 
 def refusal(request: Request) -> str | None:

@@ -88,3 +88,15 @@ def test_the_perimeters_own_refusals_carry_cors_headers():
     big = b'{"spec": "' + b"x" * (3 * 1024 * 1024) + b'"}'
     r = client().post("/api/model", content=big, headers={**origin, "Content-Type": "application/json"})
     assert r.status_code == 413 and r.headers.get("access-control-allow-origin") == origin["Origin"]
+
+
+def test_only_the_named_routes_are_open():
+    """A future route that merely starts like an open one (/api/statusx) is guarded, and HEAD is open only where GET
+    is."""
+    remote = client(REMOTE)
+    assert remote.get("/api/statusx").status_code == 401
+    assert remote.get("/api/examplesx").status_code == 401
+    assert remote.head("/api/jobs/" + "0" * 32).status_code == 401
+    assert remote.head("/api/status").status_code != 401
+    examples = remote.get("/api/examples").json()
+    assert examples and remote.get(examples[0]["url"]).status_code == 200
