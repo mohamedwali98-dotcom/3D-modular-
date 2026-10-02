@@ -61,6 +61,7 @@ class View:
     box: Box
     label_box: Box | None = None
     line_art: bool = True
+    body: np.ndarray | None = field(default=None, repr=False, compare=False)  # the closed outline in `box` (sketches)
 
 
 @dataclass
@@ -119,10 +120,13 @@ def split_by_outlines(image_bgr: np.ndarray, stroke_px: float) -> Sheet:
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, kernel)
     texts = _words(find_text_boxes(ink, stroke_px))
-    bodies = []
+    bodies, masks = [], []
     for body in _bodies(closed, kernel, BODY * h * w):
-        ys, xs = np.nonzero(_trim_strips(closed, body, texts, kernel))
-        bodies.append((int(xs.min()), int(ys.min()), int(np.ptp(xs)) + 1, int(np.ptp(ys)) + 1))
+        body = cv2.dilate(_trim_strips(closed, body, texts, kernel).astype(np.uint8), kernel) > 0  # the outline's
+        ys, xs = np.nonzero(body)                                         # ink, which the opening rounded off
+        x, y = int(xs.min()), int(ys.min())
+        bodies.append((x, y, int(np.ptp(xs)) + 1, int(np.ptp(ys)) + 1))
+        masks.append(body[y: y + bodies[-1][3], x: x + bodies[-1][2]])
     if not bodies:
         return Sheet([], (h, w), ["No closed outline found in the image."])
     rest = ink.copy()
@@ -137,7 +141,7 @@ def split_by_outlines(image_bgr: np.ndarray, stroke_px: float) -> Sheet:
         box = _union(boxes[i] for i in g)
         if box[2] >= LABEL_ASPECT * box[3] and (owner := _label_owner(box, pool)) is not None:
             labels.setdefault(owner, []).append(box)
-    views = [View(b, _union(labels[i]) if i in labels else None, True) for i, b in pool.items()]
+    views = [View(b, _union(labels[i]) if i in labels else None, True, masks[i]) for i, b in pool.items()]
     return Sheet(_drawings(views, []), (h, w), [])
 
 
@@ -236,11 +240,12 @@ def _strip(lost: np.ndarray, p: np.ndarray, q: np.ndarray) -> bool:
     return float(np.ptp(across)) <= STRIP_THIN * float(np.ptp(along))
 
 
-def is_sheet(sheet: Sheet) -> bool:
+def is_sheet(sheet: Sheet, align: float = ALIGN, extent: float = EXTENT) -> bool:
     """True when some drawing holds two line-drawn views that line up in a row or a column the way orthographic
-    views do: centres within 10 % and the shared extent within 25 %. Photos (filled blobs), a part beside its shadow
-    or a coin, and dimension text beside a sketch do not (Review Focus 1)."""
-    return any(_aligned_pair(d.views) for d in sheet.drawings)
+    views do: centres within 10 % and the shared extent within 25 % (hand sketches: wider, `align` and `extent`).
+    Photos (filled blobs), a part beside its shadow or a coin, and dimension text beside a sketch do not (Review
+    Focus 1)."""
+    return any(_aligned_pair(d.views, align, extent) for d in sheet.drawings)
 
 
 def ink_mask(image_bgr: np.ndarray) -> np.ndarray:
@@ -461,20 +466,21 @@ def _drawings(views: list[View], cuts) -> list[Drawing]:
     return sorted(drawings, key=lambda d: (min(v.box[1] for v in d.views), min(v.box[0] for v in d.views)))
 
 
-def _in_line(a: Box, b: Box, row: bool) -> bool:
+def _in_line(a: Box, b: Box, row: bool, align: float = ALIGN, extent: float = EXTENT) -> bool:
     p, s = (1, 3) if row else (0, 2)
     size = max(a[s], b[s])
-    return (abs((a[p] + a[s] / 2) - (b[p] + b[s] / 2)) <= ALIGN * size
-            and abs(a[s] - b[s]) <= EXTENT * size)
+    return (abs((a[p] + a[s] / 2) - (b[p] + b[s] / 2)) <= align * size
+            and abs(a[s] - b[s]) <= extent * size)
 
 
-def _aligned_pair(views: list[View]) -> bool:
+def _aligned_pair(views: list[View], align: float = ALIGN, extent: float = EXTENT) -> bool:
     art = [v.box for v in views if v.line_art]
     if len(art) < 2:
         return False
     biggest = max(max(b[2], b[3]) for b in art)
     art = [b for b in art if max(b[2], b[3]) >= MIN_VIEW * biggest]
-    return any(_in_line(a, b, True) or _in_line(a, b, False) for a, b in combinations(art, 2))
+    return any(_in_line(a, b, True, align, extent) or _in_line(a, b, False, align, extent)
+               for a, b in combinations(art, 2))
 
 
 @dataclass
@@ -493,14 +499,15 @@ def named_count(naming: Naming) -> int:
 
 
 def name_views(sheet: Sheet, image_bgr: np.ndarray, projection: str = "first",
-               reader: Reader | None = None) -> Naming:
+               reader: Reader | None = None, scale_tol: float = SCALE) -> Naming:
     """The face each view of the part drawing shows (spec 3.2).
 
     A projection symbol overrides `projection`, and is not the part while any other drawing exists (a one-view
     plate beside a title-block symbol is the plate). Without a symbol, labels that all follow the other projection's
     layout switch to it. A read label names its view when the size it implies fits the sheet's shared scale; otherwise the
     layout does, under the same check. A view neither names stays "auto", never a guess; an unnamed view under
-    MARK_AREA of the largest is a mark (dimension text, a balloon, a note) and is "skip"."""
+    MARK_AREA of the largest is a mark (dimension text, a balloon, a note) and is "skip". `scale_tol` is the scale
+    check's tolerance (hand sketches are not drawn to scale)."""
     if projection not in ("first", "third"):
         raise ValueError(f"projection {projection!r}")
     if not sheet.drawings:
@@ -521,11 +528,11 @@ def name_views(sheet: Sheet, image_bgr: np.ndarray, projection: str = "first",
                         f"{len(views)} views.")
 
     texts = [_read_label(image, v.label_box, reader) for v in views]
-    boxes = [view_body(ink, _body(ink, v.box, long), long)[0] for v in views]
-    faces, aligned, checked, notes, against = _name(boxes, texts, projection, _slack(long))
+    boxes = [v.box if v.body is not None else view_body(ink, _body(ink, v.box, long), long)[0] for v in views]
+    faces, aligned, checked, notes, against = _name(boxes, texts, projection, _slack(long), scale_tol)
     if source == "setting" and against:
         other = "third" if projection == "first" else "first"
-        alt = _name(boxes, texts, other, _slack(long))
+        alt = _name(boxes, texts, other, _slack(long), scale_tol)
         if set(alt[4]) < set(against):  # the labels follow the other projection, and switching breaks none
             warnings.append(f"The labels follow {other}-angle projection; the setting says {projection}-angle. "
                             "Used the labels.")
@@ -557,7 +564,7 @@ def crop_views(sheet: Sheet, image_bgr: np.ndarray, naming: Naming) -> list[tupl
     for view, face in zip(sheet.drawings[naming.drawing].views, naming.faces, strict=True):
         if face == SKIP:
             continue
-        (x, y, w, h), mask = view_body(ink, view.box, long)  # the geometry only: no dimension line reaches a crop
+        (x, y, w, h), mask = body_of(ink, view, long)  # the geometry only: no dimension line reaches a crop
         keep = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
         m = max(2, round(CROP_MARGIN * max(w, h)))
         crop = np.full((h + 2 * m, w + 2 * m, 3), 255, np.uint8)
@@ -652,7 +659,7 @@ def _read_label(image: np.ndarray, box: Box | None, reader: Reader | None) -> st
     return str(text or "").strip()
 
 
-def _name(boxes: list[Box], texts: list[str], projection: str, slack: int):
+def _name(boxes: list[Box], texts: list[str], projection: str, slack: int, tol: float = SCALE):
     """Faces, whether each view lines up with the front, whether some name for it passed the scale check, the
     warnings, and the views whose label won over their place in the layout.
 
@@ -660,33 +667,34 @@ def _name(boxes: list[Box], texts: list[str], projection: str, slack: int):
     one agreeing with the most labels, then the layout's front (most aligned neighbours, spec 3.2): one wrong
     "FRONT VIEW" label cannot flip a naming the layout completes."""
     hints = [_label_hint(t) for t in texts]
-    usual = _layout_front(boxes, slack)
+    usual = _layout_front(boxes, slack, tol)
     best = None
     for f in range(len(boxes)):
-        faces, aligned, checked, notes, agreed, against = _assign(boxes, hints, texts, f, projection, slack)
+        faces, aligned, checked, notes, agreed, against = _assign(boxes, hints, texts, f, projection, slack, tol)
         score = (sum(_area(boxes[i]) for i, x in enumerate(faces) if x != AUTO), agreed, f == usual)
         if best is None or score > best[0]:
             best = (score, faces, aligned, checked, notes, against, f)
     *result, f = best[1:]
     if f != usual and hints[f] == "front":
-        placed = _layout(boxes, usual, projection, slack)[0][f]
+        placed = _layout(boxes, usual, projection, slack, tol)[0][f]
         if placed:
             result[3] = result[3] + [f"{texts[f]} is where {placed} belongs; used the label"]
     return tuple(result)
 
 
-def _assign(boxes, hints, texts, f, projection, slack):
-    layout, aligned = _layout(boxes, f, projection, slack)
+def _assign(boxes, hints, texts, f, projection, slack, tol=SCALE):
+    layout, aligned = _layout(boxes, f, projection, slack, tol)
     width, height = boxes[f][2], boxes[f][3]
-    depth = _depth(boxes, layout, hints, width, height, slack)
-    placed = [bool(n) and i != f and _fits(n, boxes[i], width, height, depth, slack) for i, n in enumerate(layout)]
+    depth = _depth(boxes, layout, hints, width, height, slack, tol)
+    placed = [bool(n) and i != f and _fits(n, boxes[i], width, height, depth, slack, tol)
+              for i, n in enumerate(layout)]
     faces, notes, agreed, against = [], {}, 0, []
     for i, box in enumerate(boxes):
         hint = hints[i]
         said = None if hint in (None, "side") else hint
         if i == f:
             face = "front"
-        elif said not in (None, "front") and _fits(said, box, width, height, depth, slack):
+        elif said not in (None, "front") and _fits(said, box, width, height, depth, slack, tol):
             face = said
         else:
             face = layout[i] if placed[i] else AUTO
@@ -722,7 +730,7 @@ def _assign(boxes, hints, texts, f, projection, slack):
     return faces, aligned, checked, [notes[i] for i in sorted(notes)], agreed, against
 
 
-def _layout_front(boxes: list[Box], slack: int) -> int:
+def _layout_front(boxes: list[Box], slack: int, tol: float = SCALE) -> int:
     """With two views the left (or upper) one; otherwise the view with the most neighbours in line with it and
     sharing its extent, then the largest, then the top-left."""
     if len(boxes) == 2:
@@ -730,7 +738,7 @@ def _layout_front(boxes: list[Box], slack: int) -> int:
 
     def neighbours(i):
         return sum(_in_line_with(boxes[i], b, row, slack) and _close(boxes[i][3 if row else 2], b[3 if row else 2],
-                                                                     slack)
+                                                                     slack, tol)
                    for j, b in enumerate(boxes) if j != i for row in (True, False))
 
     return min(range(len(boxes)), key=lambda i: (-neighbours(i), -_area(boxes[i]), boxes[i][0] + boxes[i][1]))
@@ -742,7 +750,8 @@ _STEPS = {  # steps from the front along its row, and down its column -> face (s
 }
 
 
-def _layout(boxes: list[Box], f: int, projection: str, slack: int) -> tuple[list[str | None], list[bool]]:
+def _layout(boxes: list[Box], f: int, projection: str, slack: int,
+            tol: float = SCALE) -> tuple[list[str | None], list[bool]]:
     """The face each view's place around the front f implies (spec 2), or None; and whether it is in line with f.
     Only views sharing the front's height (row) or width (column) take a place, so a dimension number between two
     views does not push the side view one step out."""
@@ -752,9 +761,9 @@ def _layout(boxes: list[Box], f: int, projection: str, slack: int) -> tuple[list
             continue
         in_row, in_col = _in_line_with(boxes[f], b, True, slack), _in_line_with(boxes[f], b, False, slack)
         aligned[i] = in_row or in_col
-        if in_row and _close(b[3], boxes[f][3], slack):
+        if in_row and _close(b[3], boxes[f][3], slack, tol):
             row.append(i)
-        elif in_col and _close(b[2], boxes[f][2], slack):
+        elif in_col and _close(b[2], boxes[f][2], slack, tol):
             col.append(i)
     names: list[str | None] = [None] * len(boxes)
     for line, axis, steps in ((row, 0, _STEPS[projection][0]), (col, 1, _STEPS[projection][1])):
@@ -766,31 +775,31 @@ def _layout(boxes: list[Box], f: int, projection: str, slack: int) -> tuple[list
     return names, aligned
 
 
-def _depth(boxes, layout, hints, width, height, slack) -> float | None:
+def _depth(boxes, layout, hints, width, height, slack, tol=SCALE) -> float | None:
     """The part's depth in px, from the views that show it (top and bottom as height, sides as width): the value
     most of them agree on. Layout names first; labels only when no placed view shows it."""
     def values(names):
         return [boxes[i][3] if n in ("top", "bottom") else boxes[i][2] for i, n in enumerate(names)
-                if n in ("top", "bottom", "left", "right") and _fits(n, boxes[i], width, height, None, slack)]
+                if n in ("top", "bottom", "left", "right") and _fits(n, boxes[i], width, height, None, slack, tol)]
 
     found = values(layout) or values(hints)
     if not found:
         return None
-    return max(found, key=lambda v: sum(_close(v, u, slack) for u in found))
+    return max(found, key=lambda v: sum(_close(v, u, slack, tol) for u in found))
 
 
-def _fits(face: str, box: Box, width: int, height: int, depth: float | None, slack: int) -> bool:
+def _fits(face: str, box: Box, width: int, height: int, depth: float | None, slack: int, tol: float = SCALE) -> bool:
     """The scale check: front and rear are W x H, top and bottom W x D, the sides D x H (spec 2)."""
     w, h = box[2], box[3]
     if face in ("front", "back"):
-        return _close(w, width, slack) and _close(h, height, slack)
+        return _close(w, width, slack, tol) and _close(h, height, slack, tol)
     if face in ("top", "bottom"):
-        return _close(w, width, slack) and (depth is None or _close(h, depth, slack))
-    return _close(h, height, slack) and (depth is None or _close(w, depth, slack))
+        return _close(w, width, slack, tol) and (depth is None or _close(h, depth, slack, tol))
+    return _close(h, height, slack, tol) and (depth is None or _close(w, depth, slack, tol))
 
 
-def _close(a: float, b: float, slack: int) -> bool:
-    return abs(a - b) <= max(SCALE * max(a, b), slack)
+def _close(a: float, b: float, slack: int, tol: float = SCALE) -> bool:
+    return abs(a - b) <= max(tol * max(a, b), slack)
 
 
 def _in_line_with(front: Box, b: Box, row: bool, slack: int) -> bool:
@@ -827,6 +836,11 @@ def _filled(ink: np.ndarray, box: Box, k: int) -> np.ndarray:
     filled = np.zeros_like(closed)
     cv2.drawContours(filled, contours, -1, 1, cv2.FILLED)
     return filled[k: k + h, k: k + w]
+
+
+def body_of(ink: np.ndarray, view: View, long: int) -> tuple[Box, np.ndarray]:
+    """The view's geometry: the closed outline the sketch split found, or `view_body` on a drawing."""
+    return (view.box, view.body) if view.body is not None else view_body(ink, view.box, long)
 
 
 def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:

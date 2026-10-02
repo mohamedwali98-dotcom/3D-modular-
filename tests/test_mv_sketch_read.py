@@ -7,10 +7,11 @@ import numpy as np
 
 from s2c.multiview import spec as S
 from s2c.multiview.sheet import split_by_outlines
-from s2c.multiview.sheet_read import page_of
+from s2c.multiview.sheet_read import page_of, read_drawing, read_sheet
 from tests.hand_views import hand_photo
 from tests.line_views import drawing_sheet
 from tests.test_mv_relief import _block, _cut, _pins
+from tests.test_mv_sheet_read import _service
 
 THIRD = ("front", "top", "right")
 GOLDEN = Path(__file__).resolve().parent / "golden_sketch"
@@ -68,3 +69,29 @@ def test_dimension_strips_are_not_part_of_a_face():
         front, right = sorted((b for b in views if b != top), key=lambda b: b[0])
         assert abs(top[2] - front[2]) <= 0.03 * front[2]
         assert abs(front[3] - right[3]) <= 0.03 * front[3]
+
+
+def test_a_hand_sketch_is_read_into_named_faces():
+    photo, _ = hand_photo(_part(), faces=THIRD, layout="third", miter=True)
+    read = read_drawing(photo, "third")
+    assert read.kind == "sketch" and sorted(c.face for c in read.crops) == sorted(THIRD)
+
+
+def test_a_clean_drawing_reads_exactly_as_before():
+    img, _, words = drawing_sheet(_part(), faces=THIRD, layout="third", iso=True)
+    a = read_sheet(img, "auto", service=_service(words))
+    b = read_drawing(img, "auto", service=_service(words))
+    assert b.kind == "drawing" and [c.face for c in a.crops] == [c.face for c in b.crops]
+    assert a.scale.mm_per_px == b.scale.mm_per_px
+
+
+def test_the_real_sketch_names_its_three_faces():
+    """Third-angle set: top, front, right. On auto, the ISO default with the setting as the source is accepted
+    when the drawing does not decide (spec 2)."""
+    img = cv2.imread(str(GOLDEN / "real_bracket_1" / "image.jpg"))
+    third = read_drawing(img, "third")
+    assert sorted(f for f in third.naming.faces if f != "auto") == sorted(THIRD)
+    auto = read_drawing(img, "auto")
+    faces = sorted(auto.naming.faces)
+    assert faces == sorted(THIRD) or (faces == sorted(("bottom", "front", "left"))
+                                      and auto.naming.projection_source == "setting")

@@ -13,17 +13,19 @@ import numpy as np
 from s2c.multiview import spec as S
 from s2c.multiview.dimensions import SheetScale, read_dimensions
 from s2c.multiview.sheet import (
+    SCALE,
     SKIP,
     Naming,
     Sheet,
     _remove_border,
+    body_of,
     ink_mask,
     is_sheet,
     name_views,
     named_count,
     round_view,
+    split_by_outlines,
     split_sheet,
-    view_body,
 )
 
 log = logging.getLogger(__name__)
@@ -36,6 +38,9 @@ MARGIN = 0.3         # ...and wins when the other leaves at least this much more
 CLEAN_SHARE = 0.97   # a drawing: this share of its pixels is paper or ink...
 CLEAN_GREY = 40      # ...within this many grey levels of the paper or of the darkest ink...
 CLEAN_SAT = 25       # ...and its paper has no colour cast (mean HSV saturation under this)
+SKETCH_SCALE = 0.2   # hand sketches are not drawn to scale: the naming's size check allows this share (spec 3.2)
+SKETCH_ALIGN = 0.2   # ...and hand-placed views line up within this share of their size
+SKETCH_EXTENT = 0.4  # ...sharing an extent within this share
 
 
 @dataclass
@@ -97,6 +102,8 @@ class SheetRead:
     crops: list[SheetCrop]
     scale: SheetScale
     warnings: list[str] = field(default_factory=list)
+    kind: str = "drawing"       # "sketch" | "drawing" (read_drawing)
+    page: Page | None = None    # the page read, with its mapping back to the upload
 
     def inputs(self):
         """The views as pipeline inputs: kind "drawing", the named face, and the sheet's scale when it was read."""
@@ -115,7 +122,7 @@ def _crops(sheet: Sheet, image: np.ndarray, naming: Naming, keep_unnamed: bool =
     for i, (view, face) in enumerate(zip(sheet.drawings[naming.drawing].views, naming.faces, strict=True)):
         if face == SKIP or (face == "auto" and not keep_unnamed):
             continue
-        (x, y, w, h), mask = view_body(ink, view.box, long)
+        (x, y, w, h), mask = body_of(ink, view, long)
         keep = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
         m = max(2, round(CROP_MARGIN * max(w, h)))
         crop = np.full((h + 2 * m, w + 2 * m, 3), 255, np.uint8)
@@ -133,7 +140,7 @@ def part_bodies(sheet: Sheet, image: np.ndarray, naming: Naming):
     ink = ink_mask(image)
     long = max(image.shape[:2])
     views = sheet.drawings[naming.drawing].views if naming.drawing >= 0 else []
-    return ink, [view_body(ink, v.box, long) for v, f in zip(views, naming.faces, strict=True)
+    return ink, [body_of(ink, v, long) for v, f in zip(views, naming.faces, strict=True)
                  if f != SKIP and v.line_art]
 
 
@@ -145,7 +152,7 @@ def _envelope(sheet: Sheet, naming: Naming, image: np.ndarray) -> S.Envelope | N
     for view, face in zip(sheet.drawings[naming.drawing].views, naming.faces, strict=True):
         if face not in S.FACE_AXES:
             continue
-        _, _, w, h = view_body(ink, view.box, long)[0]
+        _, _, w, h = body_of(ink, view, long)[0]
         a_axis, b_axis, _ = S.FACE_AXES[face]
         sizes[a_axis].append(w)
         sizes[b_axis].append(h)
@@ -173,13 +180,13 @@ def _mismatch(sheet: Sheet, image: np.ndarray, naming: Naming) -> float | None:
     return mismatch(observations, {f: ol for f, (ol, _) in outlines.items()}, env)
 
 
-def _choose(sheet: Sheet, image: np.ndarray, reader) -> Naming:
+def _choose(sheet: Sheet, image: np.ndarray, reader, scale_tol: float = SCALE) -> Naming:
     """The symbol, then consistent labels, decide the projection; otherwise the drawing does: the reading whose views
     explain each other's lines clearly better wins. A tie keeps first-angle (ISO), the default convention."""
-    first = name_views(sheet, image, "first", reader)
+    first = name_views(sheet, image, "first", reader, scale_tol)
     if first.projection_source in ("symbol", "labels"):
         return first
-    third = name_views(sheet, image, "third", reader)
+    third = name_views(sheet, image, "third", reader, scale_tol)
     if third.projection_source in ("symbol", "labels") or first.faces == third.faces:
         return third if third.projection_source != "setting" else first
     a, b = _mismatch(sheet, image, first), _mismatch(sheet, image, third)
@@ -195,9 +202,11 @@ def _choose(sheet: Sheet, image: np.ndarray, reader) -> Naming:
     return first
 
 
-def choose_naming(sheet: Sheet, image: np.ndarray, projection: str, reader=None) -> Naming:
+def choose_naming(sheet: Sheet, image: np.ndarray, projection: str, reader=None, scale_tol: float = SCALE) -> Naming:
     """Name the views: "auto" lets the drawing choose the projection, "first" or "third" set it."""
-    return _choose(sheet, image, reader) if projection == "auto" else name_views(sheet, image, projection, reader)
+    if projection == "auto":
+        return _choose(sheet, image, reader, scale_tol)
+    return name_views(sheet, image, projection, reader, scale_tol)
 
 
 def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, service=None,
@@ -208,7 +217,36 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
     sheet = split_sheet(image)
     if not is_sheet(sheet):
         return None
-    naming = choose_naming(sheet, image, projection, reader)
+    return _read(sheet, image, projection, reader, service, keep_unnamed, SCALE)
+
+
+def read_drawing(image_bgr: np.ndarray, projection: str = "auto", reader=None, service=None,
+                 keep_unnamed: bool = False) -> SheetRead | S.MvAbstain | None:
+    """One image to named views and their numbers (sketch-to-model spec 3): a clean drawing is read exactly as
+    `read_sheet` reads it; a photo of a hand sketch becomes a clean page (an abstention when it cannot), its views
+    are its closed outlines, and naming allows for a sketch not drawn to scale. None when no sheet of views is
+    found."""
+    page = page_of(image_bgr)
+    if isinstance(page, S.MvAbstain):
+        return page
+    if page.kind == "drawing":
+        read = read_sheet(page.image, projection, reader, service, keep_unnamed)
+    else:
+        sheet = split_by_outlines(page.image, page.stroke_px)
+        if sum(len(d.views) for d in sheet.drawings) < 2:
+            sheet = split_sheet(page.image)
+        if not is_sheet(sheet, SKETCH_ALIGN, SKETCH_EXTENT):
+            return None
+        read = _read(sheet, page.image, projection, reader, service, keep_unnamed, SKETCH_SCALE)
+    if read is not None:
+        read.kind, read.page = page.kind, page
+    return read
+
+
+def _read(sheet: Sheet, image: np.ndarray, projection: str, reader, service, keep_unnamed: bool,
+          scale_tol: float) -> SheetRead | None:
+    """Steps 2 to 4 on a split sheet: name the views, read the numbers, crop the named views."""
+    naming = choose_naming(sheet, image, projection, reader, scale_tol)
     if named_count(naming) < 2:
         return None
     ink = ink_mask(image)
