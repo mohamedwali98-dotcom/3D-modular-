@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
+from s2c import obs
 from s2c.multiview.pipeline import ImageInput, MvPipeline, Observed, forget_images
 from s2c.multiview.spec import FACES, MvAbstain
 
@@ -239,6 +240,7 @@ def reduce(job: Job, name: str, data: dict) -> None:
             return
         stage.update(state="done", ended=now)
         stage["started"] = stage["started"] or now
+        obs.time_spent("s2c_stage_seconds", now - stage["started"], stage=key)
         if key == "label" and image is not None:
             image.update(face=data.get("face"), kind=data.get("kind"), width=data.get("width", 0),
                          height=data.get("height", 0))
@@ -482,6 +484,23 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
             _ACTIVE.discard(job.job_id)
 
 
+def _outcome(job: Job) -> str:
+    if job.status == "done":
+        return "abstain" if job.result and job.result.get("abstain") else "done"
+    return "timeout" if job.error == TOO_LONG else job.status
+
+
+def _scoped(job: Job, target):
+    """The analysis run with its id on every log record, and counted when it ends."""
+    def run_scoped(*args):
+        with obs.job_scope(job.job_id):
+            try:
+                target(*args)
+            finally:
+                obs.count("s2c_jobs_total", mode=job.mode, outcome=_outcome(job))
+    return run_scoped
+
+
 def _launch(job: Job, target, args: tuple) -> bool:
     """Run an analysis in the background. False (and the job is dropped) when MAX_RUNNING already run."""
     with _registry_lock:
@@ -491,7 +510,7 @@ def _launch(job: Job, target, args: tuple) -> bool:
         if job.job_id not in JOBS:
             _add(job)
         _ACTIVE.add(job.job_id)
-    threading.Thread(target=target, args=args, daemon=True, name=f"analysis-{job.job_id[:8]}").start()
+    threading.Thread(target=_scoped(job, target), args=args, daemon=True, name=f"analysis-{job.job_id[:8]}").start()
     return True
 
 

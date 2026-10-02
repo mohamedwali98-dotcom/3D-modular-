@@ -18,12 +18,12 @@ import cv2
 from fastapi import APIRouter, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from PIL import Image, ImageOps
 from pydantic import BaseModel, Field
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from s2c import MAX_PIXELS
+from s2c import MAX_PIXELS, obs
 from s2c.multiview import edits
 from s2c.multiview.artifacts import ROOT as ARTIFACT_ROOT
 from s2c.multiview.artifacts import build_part, bundle, export_part, sweep
@@ -112,6 +112,12 @@ def _examples() -> list[dict]:
         return []
     return [{"name": e["file"], "url": f"/api/examples/{e['file']}", "face": e["face"], "kind": e["kind"]}
             for e in items if _EXAMPLE.match(e.get("file", "")) and (EXAMPLES / e["file"]).is_file()]
+
+
+@router.get("/metrics")
+def metrics() -> PlainTextResponse:
+    """Counters and timings in the Prometheus text format (guarded like the rest of /api)."""
+    return PlainTextResponse(obs.render(), media_type="text/plain; version=0.0.4")
 
 
 @router.get("/examples")

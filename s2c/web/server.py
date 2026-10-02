@@ -12,11 +12,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
+from s2c import obs
 from s2c.web.api import get_pipeline, install_error_handlers
 from s2c.web.api import router as api_router
 from s2c.web.guard import access_token, install_guards
 
 load_dotenv()
+obs.configure_logging()
 if access_token() is None:
     logging.getLogger(__name__).warning("S2C_ACCESS_TOKEN is not set: /api answers this computer only")
 DIST = Path(__file__).resolve().parents[2] / "web" / "dist"

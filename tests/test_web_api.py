@@ -558,3 +558,9 @@ def test_an_edit_to_a_field_that_does_not_exist_is_refused():
     for path in ("features[0].type", "envelope.w_mm"):
         r = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": {path: 1}})
         assert r.status_code == 400 and path in r.json()["error"]
+
+
+def test_an_analysis_shows_in_the_metrics():
+    analyze()
+    text = c.get("/api/metrics").text
+    assert 's2c_jobs_total{mode="photos",outcome=' in text and 's2c_stage_seconds_count{stage="outline"}' in text
