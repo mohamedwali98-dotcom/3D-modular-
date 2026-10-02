@@ -96,10 +96,11 @@ class BuildResult:
     warnings: list[str]
 
 
-def forget_images(observed: Observed, res) -> None:
-    """Raw images are kept only until a spec exists; after that, merge needs only the silhouettes and the
-    cached mesh. This keeps the rule that images live for the request, plus silhouettes for one hour."""
-    if not isinstance(res, S.MvAbstain):
+def forget_images(observed: Observed, res, pipe: MvPipeline | None = None) -> None:
+    """Raw images are kept only while fuse may still use them: until a spec exists, and only when a helper that
+    draws or predicts a missing face from them is on (`pipe.needs_images()`). Merge otherwise needs only the
+    silhouettes and the cached mesh."""
+    if not isinstance(res, S.MvAbstain) or (pipe is not None and not pipe.needs_images()):
         observed.images.clear()
 
 
@@ -142,6 +143,11 @@ class MvPipeline:
                       cache_key=qwen_key),
             as_reader(self.reader, "trocr", calibrated=True, batch=False)) if r is not None]
         return ReadingService(readers) if readers else None
+
+    def needs_images(self) -> bool:
+        """Whether fuse can use the raw images again: Qwen-Image draws a missing face from them, TripoSR predicts
+        one. Without either, a later merge works from the silhouettes alone."""
+        return (self.draw_faces and self.image_gen is not None) or self.mesh_provider is not None
 
     def configured(self, ai: AiSettings) -> MvPipeline:
         """A copy for one request with the user's AI switches, seed and attempts; the shared pipeline never changes."""

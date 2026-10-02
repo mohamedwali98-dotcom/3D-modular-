@@ -41,3 +41,30 @@ def test_a_job_past_its_budget_stops_with_a_plain_message(monkeypatch):
     job = jobs.new_job(1, MvPipeline())
     jobs.run(job, MvPipeline(), [ImageInput(png, "front", "sketch")], None)
     assert job.status == "failed" and job.error == jobs.TOO_LONG
+
+
+def _front_png() -> bytes:
+    from pathlib import Path
+    return (Path(__file__).resolve().parents[1] / "examples" / "mv" / "sketches" / "front.png").read_bytes()
+
+
+def test_an_abstained_job_keeps_no_image_it_will_never_use(monkeypatch):
+    """Waiting on Review for typed sizes is the usual end of an analysis without a reader: with no hosted helper
+    on, fuse never looks at the images again, so they are not kept (200 such jobs once held about 7 GB)."""
+    from s2c.multiview.pipeline import ImageInput
+    from s2c.multiview.settings import AiSettings
+    monkeypatch.setattr(jobs, "JOBS", {})
+    pipe = MvPipeline().configured(AiSettings())
+    job = jobs.new_job(1, pipe)
+    jobs.run(job, pipe, [ImageInput(_front_png(), "front", "sketch")], None)
+    assert job.result["abstain"] is not None and job.observed.images == []
+
+
+def test_a_job_that_may_draw_a_face_keeps_its_images(monkeypatch):
+    from s2c.multiview.pipeline import ImageInput
+    from s2c.multiview.settings import AiSettings
+    monkeypatch.setattr(jobs, "JOBS", {})
+    pipe = MvPipeline(image_gen=lambda *a, **k: None).configured(AiSettings(use_qwen_image=True))
+    job = jobs.new_job(1, pipe)
+    jobs.run(job, pipe, [ImageInput(_front_png(), "front", "sketch")], None)
+    assert job.result["abstain"] is not None and len(job.observed.images) == 1
