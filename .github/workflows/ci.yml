@@ -33,9 +33,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t sketch-to-cad:ci .
-  audit:
-    # Known vulnerabilities in the locked dependencies. Reported, not blocking: a new advisory must not stop
-    # unrelated work, but it shows on every run.
+  # Known vulnerabilities in the locked dependencies. Reported, not blocking: a new advisory must not stop
+  # unrelated work, but it shows on every run. Two jobs, so one failing never hides the other.
+  audit-python:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     continue-on-error: true
@@ -44,5 +44,13 @@ jobs:
       - uses: astral-sh/setup-uv@v3
       - run: uv export --frozen --no-dev --no-hashes --no-emit-project -o requirements.txt
       - run: uvx pip-audit -r requirements.txt
-      - run: npm audit --audit-level=high
+  audit-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    defaults:
+      run:
         working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm audit --audit-level=high
