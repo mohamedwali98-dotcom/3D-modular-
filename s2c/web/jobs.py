@@ -325,17 +325,14 @@ def _sheet_reading(image_bytes: bytes):
 def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline, projection: str = "auto"):
     """The five steps (sheet_read.read_drawing) on a clean drawing or a photo of a hand sketch: page, faces,
     labels, the rest, numbers. A photo it cannot use gives its abstention (the job fails with the remedy); no
-    sheet of views gives None, and the team's sketch reader is tried. Views that cannot be named (an isometric
+    sheet of views gives None, and the team's sketch reader is tried. A crash is not caught here: it fails the job
+    rather than quietly handing the user the other reader's result. Views that cannot be named (an isometric
     picture, a detail) are left out with a note: the web app has no per-view face picker."""
     from s2c.multiview.sheet_read import read_drawing
     image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         return None
-    try:
-        return read_drawing(image, projection, reader=pipe.reader, service=pipe.reading())
-    except Exception:
-        log.exception("drawing-sheet read failed")
-        return None
+    return read_drawing(image, projection, reader=pipe.reader, service=pipe.reading())
 
 
 def _values_detail(read) -> str:
@@ -409,7 +406,8 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
             raise UserFacing(a.remedy if a is not None else
                              "No views found on the sheet. Draw the views with a dark pen and retake.",
                              f"{a.stage}: {a.reason}" if a is not None else "no views")
-        progress("stage", {"key": "views", "state": "done", "detail": f"{len(reading.views)} views found"})
+        progress("stage", {"key": "views", "state": "done",
+                           "detail": f"{len(reading.views)} views found by the sketch reader (no drawing sheet found)"})
         progress("stage", {"key": "lines", "state": "running"})
         progress("stage", {"key": "lines", "state": "done",
                            "detail": f"{len(reading.entities)} lines classified"})

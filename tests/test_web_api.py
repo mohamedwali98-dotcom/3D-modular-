@@ -321,7 +321,7 @@ def test_analyze_sheet_mode_reads_one_sheet_and_reaches_the_same_fuse_stage(monk
     assert r.status_code == 202, r.text
     job = _wait(r.json()["job_id"])
     assert [s["key"] for s in job["stages"]] == ["views", "lines", "values", "draw", "fuse"]
-    assert job["stages"][0]["detail"] == "2 views found"
+    assert job["stages"][0]["detail"].startswith("2 views found by the sketch reader")
     assert job["status"] == "done", job
     assert job["result"]["spec"] or job["result"]["abstain"]
 
@@ -514,3 +514,13 @@ def test_a_library_error_in_a_sheet_job_never_reaches_the_browser(monkeypatch):
     job = _sheet_job()
     assert job["status"] == "failed" and job["error"] == jobs.FAILED
     assert "CUDA" not in json.dumps(job)
+
+
+def test_a_crash_in_the_drawing_reader_fails_the_job_instead_of_switching_readers(monkeypatch):
+    """A bug in read_drawing must surface (a failed job, logged), never hand the user another algorithm's result."""
+    from s2c.web import jobs
+    called = []
+    monkeypatch.setattr("s2c.multiview.sheet_read.read_drawing", lambda *a, **k: 1 / 0)
+    monkeypatch.setattr(jobs, "_sheet_reading", lambda data: called.append(data))
+    job = _sheet_job()
+    assert job["status"] == "failed" and job["error"] == jobs.FAILED and not called
