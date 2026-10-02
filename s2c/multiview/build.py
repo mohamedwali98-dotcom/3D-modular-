@@ -196,7 +196,8 @@ def _turn(hull: cq.Workplane, spec: MultiViewSpec) -> cq.Workplane:
     return solid
 
 
-def build(spec: MultiViewSpec) -> cq.Workplane:
+def build(spec: MultiViewSpec, notes: list[str] | None = None) -> cq.Workplane:
+    """The part. A feature read from a drawing that would break it is left out, and `notes` gets one line saying so."""
     env = spec.envelope
     try:
         solid = _prism("front", spec.views.front, env)
@@ -211,22 +212,29 @@ def build(spec: MultiViewSpec) -> cq.Workplane:
     _check(solid)
     turned = _turn(solid, spec)
     if turned is solid:
-        return _finish_part(solid, spec)
+        return _finish_part(solid, spec, notes)
     try:
-        return _finish_part(turned, spec)
+        return _finish_part(turned, spec, notes)
     except BuildError as e:  # a revolve's faceted rim can refuse a fillet the hull takes
         log.warning("finishing the turned part failed (%s), finishing the hull instead", e.reason)
-        return _finish_part(solid, spec)
+        return _finish_part(solid, spec, notes)
 
 
-def _finish_part(solid: cq.Workplane, spec: MultiViewSpec) -> cq.Workplane:
+def _finish_part(solid: cq.Workplane, spec: MultiViewSpec, notes: list[str] | None = None) -> cq.Workplane:
     """Holes, slots, then fillets and chamfers, on a solid that already passed _check."""
+    left_out = []
     for i, f in enumerate(spec.features):
-        prov = spec.provenance.get(f"features.{i}.diameter_mm", spec.provenance.get(f"features.{i}.width_mm"))
-        solid = _cut_feature(solid, f, spec.envelope, typed=prov in ("user_written", "user_edited"))
+        prov = spec.provenance.get(f"features[{i}].diameter_mm", spec.provenance.get(f"features[{i}].width_mm"))
+        cut = _cut_feature(solid, f, spec.envelope, typed=prov in ("user_written", "user_edited"))
+        if cut is solid:
+            typed_too = " Type its size to keep it." if not isinstance(f, (FacePocket, FaceBoss)) else ""
+            left_out.append(f"A {f.type} read on the {f.face} view would break the part, so it was left out.{typed_too}")
+        solid = cut
     for finish in spec.finishes:
         solid = _apply_finish(solid, finish)
     _check(solid)
+    if notes is not None:  # only the attempt that built says what it left out
+        notes.extend(left_out)
     return solid
 
 

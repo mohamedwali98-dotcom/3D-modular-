@@ -48,6 +48,22 @@ def test_through_holes():
     assert math.isclose(volume(solid), 60 * 40 * 5 - 2 * math.pi * 9 * 5, rel_tol=0.005)
 
 
+@pytest.mark.parametrize("prov", ["user_written", "user_edited"])
+def test_a_typed_hole_that_breaks_the_part_still_fails(prov):
+    """Only a hole read from a drawing is left out when its cut breaks the part: a size the user gave is kept."""
+    spec = make_spec((60.0, 10.0, 5.0), features=[hole("front", 30.0, 5.0, 12.0)], prov=prov)
+    with pytest.raises(BuildError):
+        build(spec)
+
+
+def test_a_read_hole_that_breaks_the_part_is_left_out_and_said():
+    spec = make_spec((60.0, 10.0, 5.0), features=[hole("front", 30.0, 5.0, 12.0)], prov="measured")
+    notes: list[str] = []
+    solid = build(spec, notes)
+    assert math.isclose(volume(solid), 60 * 10 * 5, rel_tol=0.005)
+    assert notes == ["A hole read on the front view would break the part, so it was left out. Type its size to keep it."]
+
+
 def test_blind_hole_on_the_back_is_cut_from_the_back():
     solid = build(make_spec((60.0, 40.0, 5.0), features=[hole("back", 10.0, 10.0, 6.0, 2.0)]))
     assert math.isclose(volume(solid), 60 * 40 * 5 - math.pi * 9 * 2, rel_tol=0.005)

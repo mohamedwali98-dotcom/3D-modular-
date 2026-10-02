@@ -318,8 +318,9 @@ class MvPipeline:
         return spec
 
     def build(self, spec: S.MultiViewSpec, out_dir: Path, masks: dict | None = None) -> BuildResult | S.MvAbstain:
+        notes: list[str] = []
         try:
-            solid = build_solid(spec)
+            solid = build_solid(spec, notes)
         except BuildError as e:
             return S.MvAbstain(stage="build", reason=e.reason, remedy=e.remedy)
         step, stl = export(solid, out_dir)
@@ -329,7 +330,7 @@ class MvPipeline:
         mesh = solid_mesh(solid)
         views = {f: normalize_mask(face_mask(mesh, f, spec.envelope)[0]) for f in S.FACES}
         scores = {f: round(iou(views[f], m), 3) for f, m in (masks or {}).items()}
-        warnings = list(spec.warnings) + sliced.warnings
+        warnings = list(spec.warnings) + notes + sliced.warnings
         warnings += [f"Low confidence on {f}, check the dimensions." for f, s in scores.items() if s < IOU_GREEN]
         return BuildResult(step, stl, sliced.print_stl, sliced.gcode, sliced.print_time_s, sliced.filament_g,
                            views, scores, warnings)
