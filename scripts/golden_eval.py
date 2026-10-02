@@ -17,13 +17,14 @@ ROOT = Path(__file__).resolve().parents[1] / "tests" / "golden_sketch"
 
 
 def table(rows: list[dict], summary: dict) -> str:
-    lines = ["| sample | faces | values read | sizes right | silently wrong | builds | note |",
-             "| --- | --- | --- | --- | --- | --- | --- |"]
-    lines += [f"| {r['name']} | {r['named']}/{r['views']} | {r['matched']}/{r['values']} | {r['correct']}/{r['sizes']} "
-              f"| {r['wrong']} | {'yes' if r['built'] else 'no'} | {r['note']} |" for r in rows]
+    lines = ["| sample | faces | faces (auto) | values read | misreads | sizes right | silently wrong | builds | note |",
+             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |"]
+    lines += [f"| {r['name']} | {r['named']}/{r['views']} | {r['named_auto']}/{r['views']} | {r['matched']}/{r['values']} "
+              f"| {r['misread']} | {r['correct']}/{r['sizes']} | {r['wrong']} | {'yes' if r['built'] else 'no'} "
+              f"| {r['note']} |" for r in rows]
     s = summary
-    lines.append(f"| **all {s['samples']}** | {s['faces']:.2f} | {s['values']:.2f} | {s['sizes']:.2f} "
-                 f"| {s['silent_errors']} | {s['builds']:.2f} | |")
+    lines.append(f"| **all {s['samples']}** | {s['faces']:.2f} | {s['faces_auto']:.2f} | {s['values']:.2f} "
+                 f"| {s['misreads']} | {s['sizes']:.2f} | {s['silent_errors']} | {s['builds']:.2f} | |")
     return "\n".join(lines)
 
 
@@ -44,9 +45,6 @@ def main(argv: list[str] | None = None) -> int:
         print(f"baseline written to {baseline_path}")
     if args.check:
         baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-        if baseline.get("samples") != result["summary"]["samples"]:
-            print(f"note: {result['summary']['samples']} samples, the baseline has {baseline.get('samples')}: "
-                  "run --write-baseline after adding samples")
         failed = golden.regressions(result["summary"], baseline)
         for line in failed:
             print(f"REGRESSION: {line}")

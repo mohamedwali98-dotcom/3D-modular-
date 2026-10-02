@@ -1,7 +1,9 @@
 {
   "samples": 1,
   "faces": 1.0,
+  "faces_auto": 0.333,
   "values": 0.3,
+  "misreads": 4,
   "sizes": 1.0,
   "silent_errors": 0,
   "builds": 1.0

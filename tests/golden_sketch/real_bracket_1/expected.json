@@ -1,6 +1,7 @@
 {
   "views": ["top", "front", "right"],
   "projection": "third",
+  "layout": {"top": [0.36, 0.23], "front": [0.37, 0.53], "right": [0.78, 0.52]},
   "envelope": {"x": 60, "z": 25},
   "dimensions": [
     {"view": "top", "value": 60, "kind": "linear"},

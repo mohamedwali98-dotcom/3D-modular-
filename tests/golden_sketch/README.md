@@ -22,10 +22,12 @@ One folder per sheet: `image.jpg` (or `.png`) and `expected.json`. No people, no
 
 `uv run python scripts/golden_eval.py` reads every folder that has an image through the path the web app runs
 (`sheet_read.read_drawing`, then the pipeline) with TrOCR alone, and prints what it got: faces named, values read,
-envelope sizes right or silently wrong, and whether the part builds. `--check` fails when a number fell more than 2
-points below `baseline.json`; `--write-baseline` records today's numbers after you add samples. Two optional keys
-serve it: `"projection"` (`"first"` or `"third"`, what the user would pick; default `"auto"`) and `"envelope"` with
-only the sizes you know for sure.
+envelope sizes right or silently wrong, numbers misread, and whether the part builds (as `/api/model` builds it).
+`--check` fails when a number fell more than 2 points below `baseline.json`, when silent errors or misreads rose,
+or when the set has a different number of samples (then run `--write-baseline`). Optional keys serve it:
+`"projection"` (`"first"` or `"third"`, what the user would pick; default `"auto"`, the web app's default, is scored
+too), `"layout"` (each view's centre as fractions of the image, e.g. `{"top": [0.36, 0.23]}`, so a view is right
+only when the right place carries the right name) and `"envelope"` with only the sizes you know for sure.
 
 ## Real-photo slot
 

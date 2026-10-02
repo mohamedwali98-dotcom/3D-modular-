@@ -184,7 +184,7 @@ Accuracy numbers, updated as tests land:
 
 | Metric | Value |
 | --- | --- |
-| Golden set (shipped path, TrOCR only; 2026-10-02) | 1 real sketch: faces 3/3, values read 3/10, sizes 2/2 right, 0 silently wrong, builds. One sample is too few to trust: real photos are needed |
+| Golden set (shipped path, TrOCR only; 2026-10-02) | 1 real sketch: faces 3/3 with its projection picked (1/3 on the default Auto, which keeps ISO first-angle when unsure), values read 3/10 with 4 misreads, sizes 2/2 right, 0 silently wrong, builds. One sample is too few to trust: real photos are needed |
 | Coin scale error | pending |
 | OCR value accuracy | pending |
 | Reference parts, multi-view path (400 parts with known STLs, clean renders, true size given; 2026-09-26) | built 95 % (381 of 400), median volume error 10.3 %, median 3D IoU 0.91, 31 % of parts within 5 % volume. Before the fixes of 2026-09-26: 89 %, 15.6 %, 0.87, 21 %. Not a phone-photo number: that is still unmeasured |
