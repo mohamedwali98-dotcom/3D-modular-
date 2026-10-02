@@ -10,7 +10,7 @@ from s2c.multiview.pipeline import MvPipeline
 from s2c.multiview.sheet import split_by_outlines
 from s2c.multiview.sheet_read import link_sizes, page_of, read_drawing, read_sheet
 from tests.hand_views import hand_photo
-from tests.line_views import drawing_sheet
+from tests.line_views import dimension, drawing_sheet
 from tests.test_mv_relief import _block, _cut, _pins
 from tests.test_mv_sheet_read import _service
 
@@ -70,6 +70,36 @@ def test_dimension_strips_are_not_part_of_a_face():
         front, right = sorted((b for b in views if b != top), key=lambda b: b[0])
         assert abs(top[2] - front[2]) <= 0.03 * front[2]
         assert abs(front[3] - right[3]) <= 0.03 * front[3]
+
+
+def _flanged_page(dim: bool):
+    """A view with a flange line 40 px inside its bottom edge, beside a plain view as tall. Its "60" is written
+    either beside the bottom edge itself (no dimension line) or on a dimension line below, between the line and the
+    view. Returns the two views' heights."""
+    ink = np.zeros((1200, 1600), np.uint8)
+    cv2.rectangle(ink, (300, 300), (800, 600), 255, 3)
+    cv2.line(ink, (300, 560), (800, 560), 255, 3)
+    cv2.rectangle(ink, (1000, 300), (1300, 600), 255, 3)
+    if dim:
+        dimension(ink, (300, 601), (800, 601), 45, "60", line=3, font=cv2.FONT_HERSHEY_SCRIPT_SIMPLEX)
+    else:
+        cv2.putText(ink, "60", (530, 640), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 1.0, 255, 2)
+    sheet = split_by_outlines(cv2.cvtColor(255 - ink, cv2.COLOR_GRAY2BGR), 3.0)
+    flanged, plain = sorted((v.box for d in sheet.drawings for v in d.views), key=lambda b: b[0])
+    return flanged[3], plain[3]
+
+
+def test_a_number_beside_a_real_edge_never_cuts_the_view():
+    """A number written beside the outline itself, with an inner line near that edge (a flange): no dimension line
+    runs past its corners, so nothing is taken off."""
+    flanged, plain = _flanged_page(dim=False)
+    assert abs(flanged - plain) <= 6
+
+
+def test_one_number_takes_off_one_strip():
+    """The dimension strip below the view is taken off, and the same number never takes the flange off after it."""
+    flanged, plain = _flanged_page(dim=True)
+    assert abs(flanged - plain) <= 6
 
 
 def test_a_hand_sketch_is_read_into_named_faces():

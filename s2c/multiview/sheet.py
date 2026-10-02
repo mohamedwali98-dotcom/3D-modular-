@@ -48,6 +48,8 @@ STRIP_REACH = 1.6       # a dimension's number sits within this many text height
 STRIP_SHARE = 0.2       # erasing a dimension line takes under this share off the view; a real edge opens it all
 STRIP_THIN = 0.5        # a strip is under this share of its length across
 STRIP_TRIES = 8
+STRIP_PAST = 2.0        # a dimension line has this many line widths of ink just past it at an end of its strip (an
+                        # extension line running past it, an arrowhead or a tick); a corner of the outline has none
 TEXT_PAD = 4            # the margin s2c.sketch.text puts around a text box
 MARK_AREA = 0.15        # an unnamed view under this share of the largest view's area is a mark: text, balloon, note
 CROP_MARGIN = 0.04
@@ -123,7 +125,8 @@ def split_by_outlines(image_bgr: np.ndarray, stroke_px: float) -> Sheet:
     texts = _words(find_text_boxes(ink, stroke_px))
     bodies, masks = [], []
     for body in _bodies(closed, kernel, BODY * h * w):
-        body = cv2.dilate(_trim_strips(closed, body, texts, kernel).astype(np.uint8), kernel) > 0  # the outline's
+        body = cv2.dilate(_trim_strips(closed, body, texts, kernel, ink, stroke_px).astype(np.uint8),  # the outline's
+                          kernel) > 0
         ys, xs = np.nonzero(body)                                         # ink, which the opening rounded off
         x, y = int(xs.min()), int(ys.min())
         bodies.append((x, y, int(np.ptp(xs)) + 1, int(np.ptp(ys)) + 1))
@@ -153,13 +156,17 @@ def _bodies(closed: np.ndarray, kernel: np.ndarray, least: float) -> list[np.nda
     return [comp == i for i in range(1, n) if stats[i][4] >= least]
 
 
-def _trim_strips(closed: np.ndarray, body: np.ndarray, texts: list[Box], kernel: np.ndarray) -> np.ndarray:
+def _trim_strips(closed: np.ndarray, body: np.ndarray, texts: list[Box], kernel: np.ndarray, ink: np.ndarray,
+                 stroke: float) -> np.ndarray:
     """The body without the strips its dimension lines close onto it. An edge of the body's outline with a text
     box beside it is erased; when that takes off a part of the body (under STRIP_SHARE of it) and the text is not
     in what stays, the edge was a dimension line. Text inside the part taken off ("60" written between the view and
     its dimension line) needs that part to be a strip along the edge, so a small pin with a stray mark on it stays.
-    Erasing a real outline edge opens the whole view, which is too much to take off."""
+    Erasing a real outline edge opens the whole view, which is too much to take off. A strip whose edge has no ink
+    just past it at either end is the view's own (a flange beside its outer edge), and each number takes one strip
+    off: once it has, the view's real edge beside it is no dimension line."""
     k = kernel.shape[0]
+    texts = list(texts)
     for _ in range(STRIP_TRIES):
         ys, xs = np.nonzero(body)
         x0, y0 = max(0, int(xs.min()) - 2 * k), max(0, int(ys.min()) - 2 * k)
@@ -189,16 +196,38 @@ def _trim_strips(closed: np.ndarray, body: np.ndarray, texts: list[Box], kernel:
                 size = max(1, stay[box].size)
                 if stay[box].sum() > 0.3 * size or (lost[box].sum() > 0.5 * size and not _strip(lost, p, q)):
                     continue
-                cut = (trial, stay)
+                if not _runs_past(ink[y0:y1, x0:x1] > 0, lost, p, q, k, stroke):
+                    continue
+                cut = (trial, stay, t)
                 break
             if cut:
                 break
         if cut is None:
             return body
+        texts.remove(cut[2])
         closed[y0:y1, x0:x1] = cut[0]
         body = body.copy()
         body[y0:y1, x0:x1] = cut[1]
     return body
+
+
+def _runs_past(ink: np.ndarray, lost: np.ndarray, p: np.ndarray, q: np.ndarray, k: int, stroke: float) -> bool:
+    """Whether ink runs just past the edge pq, away from the strip `lost`, at either end of the strip."""
+    u = (q.astype(float) - p) / max(1e-6, float(np.hypot(*(q.astype(float) - p))))
+    n = np.array([u[1], -u[0]])
+    ly, lx = np.nonzero(lost)
+    out = -np.sign(float(((np.stack([lx, ly], 1) - p) @ n).mean()))  # away from the strip
+    ys, xs = np.nonzero(ink)
+    at = np.stack([xs, ys], 1) - p
+    along, across = at @ u, at @ n * out
+    ends = (np.stack([lx, ly], 1) - p) @ u
+    for end in (ends.min(), ends.max()):
+        line = (np.abs(along - end) <= 3 * stroke) & (np.abs(across) <= (k + 2) / 2)
+        mid = float(np.median(across[line])) if line.any() else 0.0  # the line here, as drawn
+        past = (np.abs(along - end) <= 2 * stroke) & (across - mid >= 1.5 * stroke) & (across - mid <= 5.5 * stroke)
+        if past.sum() >= STRIP_PAST * stroke:
+            return True
+    return False
 
 
 def _words(boxes: list[Box]) -> list[Box]:
