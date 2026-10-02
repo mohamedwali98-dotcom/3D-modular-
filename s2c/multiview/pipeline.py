@@ -96,6 +96,13 @@ class BuildResult:
     warnings: list[str]
 
 
+def forget_images(observed: Observed, res) -> None:
+    """Raw images are kept only until a spec exists; after that, merge needs only the silhouettes and the
+    cached mesh. This keeps the rule that images live for the request, plus silhouettes for one hour."""
+    if not isinstance(res, S.MvAbstain):
+        observed.images.clear()
+
+
 def input_mask(outline: PixelOutline, edges=()) -> np.ndarray:
     """The input silhouette of one image: outer outline filled, openings and circles cut out, normalised.
     Circles read as edges (their indices in `edges`) are not holes, so they stay filled."""
@@ -274,7 +281,7 @@ class MvPipeline:
                 observed.masks[o.face] = input_mask(o.outline, edges.get(k, ()))
         best = max(range(len(observed.observations)), key=lambda i: observed.observations[i].confidence)
         target = observed.observations[best]
-        image = observed.images[best] if best < len(observed.images) else None  # None once routes dropped them
+        image = observed.images[best] if best < len(observed.images) else None  # None once forget_images dropped them
         pairs = sorted(zip(observed.observations, observed.images), key=lambda p: -p[0].confidence)
         refs = [(o.face, img) for o, img in pairs][:MAX_REFS]
         _emit(progress, key="draw", state="running")

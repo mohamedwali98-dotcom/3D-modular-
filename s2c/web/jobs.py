@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 
-from s2c.multiview.pipeline import ImageInput, MvPipeline, Observed
-from s2c.multiview.routes import _forget_images
+from s2c.multiview.pipeline import ImageInput, MvPipeline, Observed, forget_images
 from s2c.multiview.spec import FACES, MvAbstain
 
 log = logging.getLogger(__name__)
@@ -287,7 +286,7 @@ def run(job: Job, pipe: MvPipeline, images: list[ImageInput], reference: str | N
         with job.merge_lock:  # a merge must not fuse the same Observed at the same time
             job.observed = observed
             res = pipe.fuse(observed, progress=progress)
-            _forget_images(observed, res)
+            forget_images(observed, res)
         _finish(job, res, observed.filled_by)
     except JobCancelled:
         with job.lock:
@@ -394,7 +393,7 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
             with job.merge_lock:
                 job.observed = observed
                 res = pipe.fuse(observed, progress=progress)
-                _forget_images(observed, res)
+                forget_images(observed, res)
             _finish(job, res, observed.filled_by)
             return
         reading = _sheet_reading(image.data)
@@ -414,7 +413,7 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
         with job.merge_lock:
             job.observed = observed
             res = pipe.fuse(observed, progress=progress)
-            _forget_images(observed, res)
+            forget_images(observed, res)
         _finish(job, res, observed.filled_by)
     except JobCancelled:
         with job.lock:
@@ -464,5 +463,5 @@ def merge(job: Job, pipe: MvPipeline, user_values: dict, accepted: list, rejecte
     with job.merge_lock:
         observed = job.observed
         res = pipe.fuse(observed, user_values, accepted, rejected)
-        _forget_images(observed, res)
+        forget_images(observed, res)
     return _analysis(job, res, observed.filled_by)

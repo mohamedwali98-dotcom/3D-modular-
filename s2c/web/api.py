@@ -22,7 +22,6 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from s2c.multiview import routes
 from s2c.multiview.artifacts import ROOT as ARTIFACT_ROOT
 from s2c.multiview.artifacts import build_part, bundle, export_part, sweep
 from s2c.multiview.pipeline import IOU_GREEN, ImageInput, MvPipeline, default_pipeline
@@ -30,7 +29,7 @@ from s2c.multiview.reference import REFERENCES
 from s2c.multiview.settings import AiSettings, GeometrySettings, StudioSettings
 from s2c.multiview.spec import MultiViewSpec, MvAbstain
 from s2c.silhouette import iou
-from s2c.web import chat, jobs
+from s2c.web import chat, files, jobs
 
 log = logging.getLogger(__name__)
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples" / "mv" / "sketches"
@@ -180,7 +179,7 @@ def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None
 
 
 def _job(job_id: str) -> jobs.Job:
-    job = jobs.get_job(job_id) if routes._ID.match(job_id) else None
+    job = jobs.get_job(job_id) if files.JOB_ID.match(job_id) else None
     if job is None:
         raise HTTPException(404, UNKNOWN)
     return job
@@ -235,7 +234,7 @@ def model(body: ModelBody) -> dict:
         if not path.exists():
             cv2.imwrite(str(path), mask)
         views[face] = f"{base}/{path.name}"
-    job = jobs.get_job(body.request_id) if body.request_id and routes._ID.match(body.request_id) else None
+    job = jobs.get_job(body.request_id) if body.request_id and files.JOB_ID.match(body.request_id) else None
     masks = job.observed.masks if job is not None and job.observed is not None else {}
     scores = {f: round(iou(part.views[f], m), 3) for f, m in masks.items() if f in part.views}
     warnings = list(dict.fromkeys([*part.spec.warnings, *part.warnings]))
@@ -299,7 +298,7 @@ def chat_route(body: ChatBody,
 
 @router.get("/artifacts/{key}/{path:path}")
 def artifact(key: str, path: str) -> FileResponse:
-    return routes.artifact(key, path)  # same root and the same guards as /mv/artifacts
+    return files.artifact(key, path, ARTIFACT_ROOT)
 
 
 def _sentence(status: int, detail: object) -> str:
@@ -315,7 +314,7 @@ def _sentence(status: int, detail: object) -> str:
 
 
 def install_error_handlers(app: FastAPI) -> None:
-    """/api errors render as {"error": ...}; other paths (the /mv routes) keep FastAPI's default shape.
+    """/api errors render as {"error": ...}; other paths keep FastAPI's default shape.
     Also refuses an /api body whose Content-Length is over MAX_BODY before any of it is read."""
 
     def api(request: Request) -> bool:

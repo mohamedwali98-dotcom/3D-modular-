@@ -129,7 +129,6 @@ A sketch is never taken as drawn to scale: any size no number gives is asked for
     uv run python scripts/mv_build.py examples/mv/l_bracket.json --out tmp/mv_demo          # spec -> STEP, STL, G-code
     uv run python scripts/mv_export.py examples/mv/l_bracket.json --format stl --format step --format pdf  # spec -> chosen formats + zip
     uv run python scripts/mv.py --image front.jpg@front@sketch --image top.jpg@top@sketch   # images -> the same
-    uv run uvicorn s2c.multiview.app:app --port 8001                                        # /mv API
     NETWORK_TESTS=1 uv run pytest tests/test_mv_network.py -v                               # live check of the hosted models
 
 Settings are in `.env.example`: Qwen-VL and Qwen-Image on DashScope or Hugging Face, Solaria on Hugging Face. Photos of real parts: shoot top-down with the part lying flat.

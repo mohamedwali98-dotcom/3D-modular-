@@ -9,25 +9,27 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from s2c.multiview import artifacts, routes
+from s2c.multiview import artifacts
+from s2c.web import api, files
 
 SPEC = json.loads((Path(__file__).parents[1] / "examples" / "mv" / "l_bracket.json").read_text())
 
 
 def client(tmp_path, monkeypatch):
     artifacts.clear_cache()
-    monkeypatch.setattr(routes, "ARTIFACT_ROOT", tmp_path)
+    monkeypatch.setattr(api, "ARTIFACT_ROOT", tmp_path)
     monkeypatch.setattr("s2c.multiview.slice.find_slicer", lambda: None)
     app = FastAPI()
-    app.include_router(routes.router)
-    return TestClient(app)
+    api.install_error_handlers(app)
+    app.include_router(api.router)
+    return TestClient(app, client=("127.0.0.1", 50000))
 
 
 def test_export_returns_downloadable_files_and_a_zip(tmp_path, monkeypatch):
     c = client(tmp_path, monkeypatch)
-    body = c.post("/mv/export", json={"spec": SPEC, "settings": {"export": {"formats": ["stl", "dxf"]}}}).json()
+    body = c.post("/api/export", json={"spec": SPEC, "settings": {"export": {"formats": ["stl", "dxf"]}}}).json()
     assert set(body["files"]) == {"stl", "dxf"}
-    assert c.get(body["files"]["stl"]).status_code == 200 and c.get(body["zip_url"]).status_code == 200
+    assert c.get(body["files"]["stl"]["url"]).status_code == 200 and c.get(body["zip_url"]).status_code == 200
 
 
 def test_export_sweeps_builds_older_than_an_hour(tmp_path, monkeypatch):
@@ -36,15 +38,15 @@ def test_export_sweeps_builds_older_than_an_hour(tmp_path, monkeypatch):
     stale.mkdir()
     old = time.time() - 7200
     os.utime(stale, (old, old))
-    c.post("/mv/export", json={"spec": SPEC, "settings": {"export": {"formats": ["stl"]}}})
+    c.post("/api/export", json={"spec": SPEC, "settings": {"export": {"formats": ["stl"]}}})
     assert not stale.exists()
 
 
 def test_bad_settings_and_paths_are_refused(tmp_path, monkeypatch):
     c = client(tmp_path, monkeypatch)
-    assert c.post("/mv/export", json={"spec": SPEC, "settings": {"printing": {"layer_mm": 0.9}}}).status_code == 422
-    assert c.get("/mv/artifacts/" + "0" * 20 + "/..%2F..%2Fsecret").status_code == 404
-    assert c.get("/mv/artifacts/nothex/part.stl").status_code == 404
+    assert c.post("/api/export", json={"spec": SPEC, "settings": {"printing": {"layer_mm": 0.9}}}).status_code == 422
+    assert c.get("/api/artifacts/" + "0" * 20 + "/..%2F..%2Fsecret").status_code == 404
+    assert c.get("/api/artifacts/nothex/part.stl").status_code == 404
 
 
 def test_the_cli_exports_formats(tmp_path, monkeypatch):
@@ -72,9 +74,9 @@ def test_the_cli_records_settings_in_the_manifest(tmp_path, monkeypatch):
 
 def test_artifact_route_rejects_dotdot(tmp_path, monkeypatch):
     c = client(tmp_path, monkeypatch)
-    assert routes._NAME.fullmatch("..") is None
+    assert files.NAME.fullmatch("..") is None
     key = "0" * 20
-    for url in (f"/mv/artifacts/{key}/..%2Fx", f"/mv/artifacts/{key}/a/../b"):
+    for url in (f"/api/artifacts/{key}/..%2Fx", f"/api/artifacts/{key}/a/../b"):
         status = c.get(url).status_code
         assert status != 200
         assert status in (400, 404)
@@ -85,7 +87,7 @@ def test_export_abstain(tmp_path, monkeypatch):
     # a fillet too large for the part to hold: tests/test_studio_artifacts.py proves this is a real
     # BuildError("fillet_failed") out of build_part, not a mock.
     body = {"spec": SPEC, "settings": {"geometry": {"finish": "fillet", "finish_mm": 8.0}}}
-    r = c.post("/mv/export", json=body)
+    r = c.post("/api/export", json=body)
     assert r.status_code == 200
     abstain = r.json()["abstain"]
     assert abstain["stage"] == "build"

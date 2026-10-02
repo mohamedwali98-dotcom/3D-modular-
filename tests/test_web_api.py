@@ -484,3 +484,10 @@ def test_a_dark_photo_in_sheet_mode_fails_with_the_page_remedy(monkeypatch):
     r = c.post("/api/analyze", files=[("files", ("d.png", dark, "image/png"))], data={"mode": "sheet"})
     job = _wait(r.json()["job_id"])
     assert job["status"] == "failed" and job["error"]
+
+
+def test_the_legacy_mv_routes_are_not_served():
+    """/mv had none of /api's guards (size limit, image check, concurrency cap): the server mounts /api only."""
+    assert not [p for p in app.openapi()["paths"] if p.startswith("/mv")]
+    files = [("files", ("front.png", (SK / "front.png").read_bytes(), "image/png"))]
+    assert c.post("/mv/analyze", files=files).status_code in (404, 405)
