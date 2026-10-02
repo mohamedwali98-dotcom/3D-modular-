@@ -1,6 +1,8 @@
 """Upload limits (audit H1): pixels before decode, and a body without Content-Length."""
 import io
 import os
+import subprocess
+import sys
 
 import cv2
 import numpy as np
@@ -55,3 +57,21 @@ def test_only_a_multipart_upload_gets_the_image_sized_limit():
     body = b'{"request_id": "' + b"0" * (3 * 1024 * 1024) + b'"}'
     for kind in ("Application/JSON", "application/merge-patch+json", "text/plain"):
         assert c.post("/api/merge", content=body, headers={"Content-Type": kind}).status_code == 413, kind
+
+
+def _python(code: str, cwd=None, **env) -> subprocess.CompletedProcess:
+    base = {k: v for k, v in os.environ.items() if k not in ("S2C_MAX_PIXELS", "OPENCV_IO_MAX_IMAGE_PIXELS")}
+    return subprocess.run([sys.executable, "-c", code], cwd=cwd, env={**base, **env}, capture_output=True,
+                          text=True, timeout=180, check=False)
+
+
+def test_importing_cv2_before_s2c_is_warned_about():
+    """OpenCV reads its pixel cap when cv2 is imported: s2c must come first, and says so when it did not."""
+    assert "OPENCV_IO_MAX_IMAGE_PIXELS" in _python("import cv2, s2c").stderr
+    assert "OPENCV_IO_MAX_IMAGE_PIXELS" not in _python("import s2c, cv2").stderr
+
+
+def test_the_cap_is_s2c_max_pixels_from_the_environment_or_dot_env(tmp_path):
+    (tmp_path / ".env").write_text("S2C_MAX_PIXELS=1000\n", encoding="utf-8")
+    code = "import os, s2c; print(s2c.MAX_PIXELS, os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'])"
+    assert _python(code, cwd=tmp_path, OPENCV_IO_MAX_IMAGE_PIXELS="999999999999").stdout.split() == ["1000", "1000"]
