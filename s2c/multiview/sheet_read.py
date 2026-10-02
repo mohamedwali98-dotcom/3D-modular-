@@ -375,15 +375,16 @@ def read_drawing(image_bgr: np.ndarray, projection: str = "auto", reader=None, s
         if not is_sheet(sheet, SKETCH_ALIGN, SKETCH_EXTENT):
             return None
         sheet.stroke_px = page.stroke_px
-        read = _read(sheet, page.image, projection, reader, service, keep_unnamed, SKETCH_SCALE)
+        read = _read(sheet, page.image, projection, reader, service, keep_unnamed, SKETCH_SCALE, page.to_photo)
     if read is not None:
         read.kind, read.page = page.kind, page
     return read
 
 
 def _read(sheet: Sheet, image: np.ndarray, projection: str, reader, service, keep_unnamed: bool,
-          scale_tol: float) -> SheetRead | None:
-    """Steps 2 to 4 on a split sheet: name the views, read the numbers, crop the named views."""
+          scale_tol: float, to_source: np.ndarray | None = None) -> SheetRead | None:
+    """Steps 2 to 4 on a split sheet: name the views, read the numbers, crop the named views. A sheet with a
+    stroke width is a hand sketch."""
     naming = choose_naming(sheet, image, projection, reader, scale_tol)
     if named_count(naming) < 2:
         return None
@@ -398,7 +399,10 @@ def _read(sheet: Sheet, image: np.ndarray, projection: str, reader, service, kee
                         "only a picture of the part.")
     ink, bodies = part_bodies(sheet, image, naming)
     _remove_border(ink)  # the sheet's frame is no dimension line
-    scale = read_dimensions(image, ink, bodies, service)
+    sketch = sheet.stroke_px is not None
+    scale = read_dimensions(image, ink, bodies, service, "sketch" if sketch else "drawing", sheet.stroke_px,
+                            to_source)
+    _overall(scale.dimensions, sheet, naming, image, OVERALL_SKETCH if sketch else OVERALL)
     warnings += scale.warnings
     if scale.mm_per_px:
         warnings.append(f"Sizes read from the drawing's dimensions ({len(scale.used)} used); check them.")
@@ -406,6 +410,62 @@ def _read(sheet: Sheet, image: np.ndarray, projection: str, reader, service, kee
 
 
 DIAMETER_OFF = 0.10  # a written Ø further than this from the measured circle is flagged, not trusted
+OVERALL = 0.08       # a dimension line spanning a view's whole width or height within this share is its size...
+OVERALL_SKETCH = 0.15  # ...on a hand sketch, within this share
+
+
+def _overall(dims, sheet: Sheet, naming: Naming, image: np.ndarray, tol: float) -> None:
+    """Mark each linear dimension whose line spans a named view's whole width (axis "a") or height ("b"), beside
+    it, as that view's overall size (spec 3.4). The nearest such view wins."""
+    ink = ink_mask(image)
+    long = max(image.shape[:2])
+    views = sheet.drawings[naming.drawing].views
+    boxes = {i: body_of(ink, v, long)[0] for i, (v, f) in enumerate(zip(views, naming.faces, strict=True))
+             if f in S.FACE_AXES}
+    for d in dims:
+        if d.kind != "linear" or d.line is None:
+            continue
+        axis, pos, s, e = d.line
+        best = None
+        for i, (x, y, w, h) in boxes.items():
+            lo, size, near, far = (x, w, y, y + h) if axis == "h" else (y, h, x, x + w)
+            if abs(s - lo) > tol * size or abs(e - (lo + size)) > tol * size or near <= pos <= far:
+                continue
+            gap = min(abs(pos - near), abs(pos - far))
+            if gap <= 0.5 * max(w, h) and (best is None or gap < best[0]):
+                best = (gap, i)
+        if best is not None:
+            d.view, d.axis = best[1], "a" if axis == "h" else "b"
+
+
+def link_sizes(read: SheetRead, observed) -> None:
+    """Each overall size written on the drawing becomes that view's written width or height (rule 2:
+    user_written), so the envelope comes from the user's own numbers. Every other value read is listed in Review,
+    so the user sees it was read: on a sketch none of them sizes anything yet; on a drawing those that set no scale."""
+    from s2c.multiview.ocr import Linked, Reading
+    index = {c.view: k for k, c in enumerate(read.crops)}
+    views = read.sheet.drawings[read.naming.drawing].views
+    for d in read.scale.dimensions:
+        if d.kind != "linear":
+            continue
+        if d.view in index and index[d.view] < len(observed.observations):
+            o = observed.observations[index[d.view]]
+            o.values.append(Linked(Reading(d.value_mm, "linear", d.box, 0.95, d.text, d.confirmed), d.axis, None))
+        elif read.kind == "sketch" or d not in read.scale.used:
+            face = _nearest_face(d.box, views, read.naming.faces)
+            where = f" near the {face} view" if face else ""
+            observed.warnings.append(f"Read {d.text}{where}; not used: only overall sizes size the part yet.")
+
+
+def _nearest_face(box, views, faces) -> str | None:
+    x, y, w, h = box
+    cx, cy = x + w / 2, y + h / 2
+    named = [(v.box, f) for v, f in zip(views, faces, strict=True) if f in S.FACE_AXES]
+    if not named:
+        return None
+    def gap(b):
+        return np.hypot(max(0, b[0] - cx, cx - b[0] - b[2]), max(0, b[1] - cy, cy - b[1] - b[3]))
+    return min(named, key=lambda vf: gap(vf[0]))[1]
 
 
 def link_diameters(read: SheetRead, observed) -> None:

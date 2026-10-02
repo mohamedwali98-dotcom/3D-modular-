@@ -8,7 +8,7 @@ import numpy as np
 from s2c.multiview import spec as S
 from s2c.multiview.pipeline import MvPipeline
 from s2c.multiview.sheet import split_by_outlines
-from s2c.multiview.sheet_read import page_of, read_drawing, read_sheet
+from s2c.multiview.sheet_read import link_sizes, page_of, read_drawing, read_sheet
 from tests.hand_views import hand_photo
 from tests.line_views import drawing_sheet
 from tests.test_mv_relief import _block, _cut, _pins
@@ -116,3 +116,34 @@ def test_straightening_keeps_a_hole_round():
     obs = MvPipeline().observe(read.inputs())
     front = next(o for o in obs.observations if o.face == "front")
     assert len(front.outline.circles) == 1
+
+
+def test_a_sketch_builds_from_its_written_sizes():
+    photo, words = hand_photo(_block(), faces=THIRD, layout="third")
+    read = read_drawing(photo, "third", service=_service(words))
+    pipe = MvPipeline()
+    observed = pipe.observe(read.inputs())
+    link_sizes(read, observed)
+    spec = pipe.fuse(observed)
+    assert (spec.envelope.x_mm, spec.envelope.y_mm, spec.envelope.z_mm) == (80, 60, 70)
+    assert spec.provenance["envelope.x_mm"] == "user_written"
+
+
+def test_a_sketch_without_numbers_suggests_and_never_measures():
+    photo, _ = hand_photo(_block(), faces=THIRD, layout="third", dims=False)
+    read = read_drawing(photo, "third")
+    result = MvPipeline().fuse(MvPipeline().observe(read.inputs()))
+    assert isinstance(result, S.MvAbstain) and result.stage == "dimensions"
+
+
+def test_a_part_dimension_is_read_but_not_used_as_a_size():
+    part = _cut(_block(), 0, 40, 50, 15, 60, 70)
+    # one more dimension, over the notch's 15 mm width only (front view, along a, above the view)
+    photo, words = hand_photo(part, faces=THIRD, layout="third", extra=[("front", 0, 15, "a", "15")])
+    read = read_drawing(photo, "third", service=_service(words))
+    pipe = MvPipeline()
+    observed = pipe.observe(read.inputs())
+    link_sizes(read, observed)
+    spec = pipe.fuse(observed)
+    assert spec.envelope.x_mm == 80
+    assert any("Read 15" in w and "not used" in w for w in spec.warnings)
