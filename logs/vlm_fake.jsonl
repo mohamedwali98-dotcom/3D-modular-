@@ -1,4 +1,0 @@
-{"ts": 1790413895.1148958, "provider": "unset", "model": "fake", "latency_ms": 0, "status": "ok", "chars_out": 195}
-{"ts": 1790413895.3216555, "provider": "unset", "model": "fake", "latency_ms": 0, "status": "ok", "chars_out": 195}
-{"ts": 1790459997.9529815, "provider": "unset", "model": "fake", "latency_ms": 0, "status": "ok", "chars_out": 195}
-{"ts": 1790459998.002113, "provider": "unset", "model": "fake", "latency_ms": 0, "status": "ok", "chars_out": 195}

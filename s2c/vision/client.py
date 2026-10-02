@@ -9,6 +9,8 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from s2c.logdir import log_file
+
 Chat = Callable[[list[dict]], str]
 
 
@@ -20,12 +22,12 @@ class VLMClient:
         model: str | None = None,
         base_url: str | None = None,
         api_key: str | None = None,
-        log_path: str | Path = "logs/vlm.jsonl",
+        log_path: str | Path | None = None,
         temperature: float = 0.0,
     ):
         self.model = model or os.environ.get("VLM_MODEL", "unset")
         self.base_url = base_url or os.environ.get("VLM_BASE_URL", "unset")
-        self.log_path = Path(log_path)
+        self.log_path = Path(log_path) if log_path else log_file("vlm.jsonl")
         self.temperature = temperature
         # Per-call usage lives in thread-local storage, not a plain instance
         # attribute. The transport records usage after the model responds and

@@ -13,6 +13,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from s2c.logdir import log_file
 from s2c.multiview.spec import MvAbstain
 
 log = logging.getLogger(__name__)
@@ -100,7 +101,7 @@ def hint_label(face: str, kind: str = "sketch") -> MvLabel:
     return MvLabel(face=face, input_kind=kind, confidence=0.9)
 
 
-def env_chat(log_path: str | Path = "logs/vlm.jsonl", stage: str = "mv_label") -> Chat | None:
+def env_chat(log_path: str | Path | None = None, stage: str = "mv_label") -> Chat | None:
     """OpenAI-compatible chat from VLM_BASE_URL, VLM_MODEL, VLM_API_KEY; None when not configured.
     Swap for the integrator's VLMClient when s2c/vision/ lands."""
     base, model, key = (os.environ.get(k) for k in ("VLM_BASE_URL", "VLM_MODEL", "VLM_API_KEY"))
@@ -108,7 +109,7 @@ def env_chat(log_path: str | Path = "logs/vlm.jsonl", stage: str = "mv_label") -
         return None
     from openai import OpenAI
     # The library default is 600 s with 2 retries; a hung provider must not hold an image for half an hour
-    client, path = OpenAI(base_url=base, api_key=key, timeout=CHAT_TIMEOUT_S, max_retries=1), Path(log_path)
+    client, path = OpenAI(base_url=base, api_key=key, timeout=CHAT_TIMEOUT_S, max_retries=1), Path(log_path or log_file("vlm.jsonl"))
 
     def chat(messages: list[dict]) -> str:
         t0 = time.perf_counter()

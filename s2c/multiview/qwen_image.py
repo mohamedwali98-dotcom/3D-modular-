@@ -15,6 +15,7 @@ import cv2
 import httpx
 import numpy as np
 
+from s2c.logdir import log_file
 from s2c.multiview.outline import resize_long_side
 
 log = logging.getLogger(__name__)
@@ -31,7 +32,7 @@ class ImageGenError(RuntimeError):
 
 
 def log_call(log_path, provider: str, model: str, stage: str, t0: float, ok: bool) -> None:
-    path = Path(log_path)
+    path = Path(log_path) if log_path else log_file("vlm.jsonl")
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as f:
         f.write(json.dumps({"provider": provider, "model": model, "stage": stage, "ok": ok,
@@ -63,7 +64,7 @@ def _image_url(output: dict) -> str | None:
 
 
 def dashscope_gen(base_url: str, model: str, key: str, client: httpx.Client | None = None, poll_s: float = 2.0,
-                  timeout_s: float = DASHSCOPE_TIMEOUT_S, log_path="logs/vlm.jsonl",
+                  timeout_s: float = DASHSCOPE_TIMEOUT_S, log_path=None,
                   clock: Callable[[], float] = time.monotonic) -> ImageGen:
     http = client or httpx.Client(timeout=30)
     headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
@@ -118,7 +119,7 @@ def dashscope_gen(base_url: str, model: str, key: str, client: httpx.Client | No
 
 
 def space_gen(space: str, token: str | None = None, client_factory=None, timeout_s: float = SPACE_TIMEOUT_S,
-              log_path="logs/vlm.jsonl") -> ImageGen:
+              log_path=None) -> ImageGen:
     def run(refs: list[np.ndarray], prompt: str, seed: int) -> np.ndarray:
         from gradio_client import Client, handle_file
         client = (client_factory or Client)(space, token=token, httpx_kwargs={"timeout": HTTP_TIMEOUT_S})

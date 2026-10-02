@@ -12,15 +12,14 @@ import secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 
 from pydantic import ValidationError
 
+from s2c.logdir import log_file
 from s2c.web.describe import REQUIRED, PartRequest, check, spec_from_request
 
 MAX_MESSAGES = 20
 MAX_CHARS = 2000
-LOG_PATH = Path("logs/chat.jsonl")
 REPHRASE = "Sorry, could you rephrase that?"
 
 SYSTEM_PROMPT = """You are the design assistant of Sketch-to-CAD. You help the user describe ONE simple mechanical part \
@@ -105,9 +104,10 @@ def get_chat_transport() -> ChatTransport | None:
 
 
 def _log(record: dict) -> None:
+    path = log_file("chat.jsonl")
     try:
-        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with LOG_PATH.open("a", encoding="utf-8") as f:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
     except OSError:
         pass

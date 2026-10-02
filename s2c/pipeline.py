@@ -10,6 +10,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from s2c.logdir import log_file
 from s2c.merge import merge
 from s2c.partspec.models import Abstain, Annotations, Measurements, PartSpec, SourceInput, Topology
 from s2c.silhouette import input_silhouette, iou, normalize_mask
@@ -117,7 +118,7 @@ def _load(module: str, attr: str, fallback):
 
 def fake_pipeline() -> Pipeline:
     from s2c.fakes import builder, metrology, ocr, views, vision
-    client = VLMClient(chat=vision.chat, model="fake", log_path="logs/vlm_fake.jsonl")
+    client = VLMClient(chat=vision.chat, model="fake", log_path=log_file("vlm_fake.jsonl"))
     return Pipeline(
         topology=lambda b, k: topology_from_image(b, client, k),
         annotations=ocr.read_annotations, measure=metrology.measure,
@@ -130,7 +131,7 @@ def default_pipeline(client: VLMClient | None = None) -> Pipeline:
     if client is None:
         import os
         client = VLMClient.from_env() if os.environ.get("VLM_API_KEY") else VLMClient(
-            chat=vision.chat, model="fake", log_path="logs/vlm_fake.jsonl")
+            chat=vision.chat, model="fake", log_path=log_file("vlm_fake.jsonl"))
     return Pipeline(
         topology=lambda b, k: topology_from_image(b, client, k),
         annotations=_load("s2c.ocr", "read_annotations", ocr.read_annotations),

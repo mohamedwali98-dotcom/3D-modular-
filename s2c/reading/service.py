@@ -18,6 +18,7 @@ from typing import Literal
 
 import numpy as np
 
+from s2c.logdir import log_file
 from s2c.reading.base import Crop, Reader, ReaderResult
 
 log = logging.getLogger(__name__)
@@ -83,7 +84,7 @@ class ReadingService:
                  log_path: str | Path | None = None):
         self.readers = list(readers)
         self.cache = cache
-        self.log_path = Path(log_path or os.environ.get("READING_LOG", "logs/reading.jsonl"))
+        self.log_path = Path(log_path or os.environ.get("READING_LOG") or log_file("reading.jsonl"))
         self._log_lock = threading.Lock()
 
     def read(self, crops: list[Crop]) -> list[ReaderRun]:

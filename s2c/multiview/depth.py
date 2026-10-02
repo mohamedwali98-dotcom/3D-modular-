@@ -44,7 +44,7 @@ def read_depth(ply_path, width: int, height: int, stride: int = STRIDE) -> np.nd
 
 
 def solaria_depth(space: str, token: str | None = None, client_factory=None, timeout_s: float = TIMEOUT_S,
-                  log_path="logs/vlm.jsonl") -> DepthProvider:
+                  log_path=None) -> DepthProvider:
     def run(img: np.ndarray) -> np.ndarray:
         from gradio_client import Client, handle_file
         h, w = img.shape[:2]

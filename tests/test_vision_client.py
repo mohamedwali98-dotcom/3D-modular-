@@ -182,3 +182,10 @@ def test_failed_call_is_logged_with_status_and_reraises(tmp_path):
     assert rec["error_type"] == "RuntimeError"
     assert "latency_ms" in rec
     assert "SYSTEM_PROMPT_OR_IMAGE_CONTENT_MUST_NEVER_REACH_THE_LOG" not in lines[0]
+
+
+def test_the_default_log_goes_to_the_log_directory(tmp_path, monkeypatch):
+    """Call logs follow S2C_LOG_DIR (read when the client is made), so tests and deployments keep them out of git."""
+    monkeypatch.setenv("S2C_LOG_DIR", str(tmp_path / "calls"))
+    VLMClient(chat=lambda m: "{}", model="fake-model").complete_json("s", "u", b"x")
+    assert (tmp_path / "calls" / "vlm.jsonl").is_file()

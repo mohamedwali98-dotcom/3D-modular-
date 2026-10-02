@@ -61,6 +61,8 @@ packages = ["s2c"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests that need a GPU, a hosted model, PrusaSlicer, Blender or the dataset run only when asked (-m gpu, ...).
+addopts = "-m 'not gpu and not network and not slicer and not blender and not dataset'"
 markers = [
   "gpu: needs a CUDA GPU and the ai extra",
   "slicer: needs PrusaSlicer installed",

@@ -34,3 +34,9 @@ def _fresh_rate_limits():
     from s2c.web.guard import LIMITER
     LIMITER.reset()
     yield
+
+
+@pytest.fixture(autouse=True)
+def _logs_out_of_the_tree(tmp_path, monkeypatch):
+    """Call logs (VLM, chat, Qwen-Image, Solaria) go to a temp folder: a test run never touches logs/."""
+    monkeypatch.setenv("S2C_LOG_DIR", str(tmp_path / "logs"))
