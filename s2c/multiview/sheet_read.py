@@ -339,8 +339,12 @@ def _choose(sheet: Sheet, image: np.ndarray, reader, scale_tol: float = SCALE) -
     return first
 
 
-def choose_naming(sheet: Sheet, image: np.ndarray, projection: str, reader=None, scale_tol: float = SCALE) -> Naming:
-    """Name the views: "auto" lets the drawing choose the projection, "first" or "third" set it."""
+def choose_naming(sheet: Sheet, image: np.ndarray, projection: str, reader=None,
+                  scale_tol: float | None = None) -> Naming:
+    """Name the views: "auto" lets the drawing choose the projection, "first" or "third" set it. A hand sketch's
+    sheet (it has a stroke width) is named with the sketch tolerance unless `scale_tol` says otherwise."""
+    if scale_tol is None:
+        scale_tol = SKETCH_SCALE if sheet.stroke_px else SCALE
     if projection == "auto":
         return _choose(sheet, image, reader, scale_tol)
     return name_views(sheet, image, projection, reader, scale_tol)
@@ -440,9 +444,13 @@ def _overall(dims, sheet: Sheet, naming: Naming, image: np.ndarray, tol: float) 
 
 def link_sizes(read: SheetRead, observed) -> None:
     """Each overall size written on the drawing becomes that view's written width or height (rule 2:
-    user_written), so the envelope comes from the user's own numbers. Every other value read is listed in Review,
-    so the user sees it was read: on a sketch none of them sizes anything yet; on a drawing those that set no scale."""
+    user_written), so the envelope comes from the user's own numbers. A drawing whose dimensions confirm its scale
+    keeps its measured sizes, as before. Every other value a sketch shows is listed in Review, so the user sees it
+    was read: none of them sizes anything yet."""
     from s2c.multiview.ocr import Linked, Reading
+    sketch = read.kind == "sketch"
+    if not sketch and read.scale.confirmed:
+        return
     index = {c.view: k for k, c in enumerate(read.crops)}
     views = read.sheet.drawings[read.naming.drawing].views
     for d in read.scale.dimensions:
@@ -451,7 +459,7 @@ def link_sizes(read: SheetRead, observed) -> None:
         if d.view in index and index[d.view] < len(observed.observations):
             o = observed.observations[index[d.view]]
             o.values.append(Linked(Reading(d.value_mm, "linear", d.box, 0.95, d.text, d.confirmed), d.axis, None))
-        elif read.kind == "sketch" or d not in read.scale.used:
+        elif sketch:
             face = _nearest_face(d.box, views, read.naming.faces)
             where = f" near the {face} view" if face else ""
             observed.warnings.append(f"Read {d.text}{where}; not used: only overall sizes size the part yet.")

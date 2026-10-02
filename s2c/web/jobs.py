@@ -315,18 +315,30 @@ def _sheet_reading(image_bytes: bytes):
 
 
 def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline, projection: str = "auto"):
-    """The sheet read end to end (sheet_read.read_sheet) when the image is a clean orthographic drawing sheet, else
-    None, so hand sketches still go to the sketch reader. Views that cannot be named (an isometric picture, a
-    detail) are left out with a note: the web app has no per-view face picker."""
-    from s2c.multiview.sheet_read import read_sheet
+    """The five steps (sheet_read.read_drawing) on a clean drawing or a photo of a hand sketch: page, faces,
+    labels, the rest, numbers. A photo it cannot use gives its abstention (the job fails with the remedy); no
+    sheet of views gives None, and the team's sketch reader is tried. Views that cannot be named (an isometric
+    picture, a detail) are left out with a note: the web app has no per-view face picker."""
+    from s2c.multiview.sheet_read import read_drawing
     image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
     if image is None:
         return None
     try:
-        return read_sheet(image, projection, reader=pipe.reader, service=pipe.reading())
+        return read_drawing(image, projection, reader=pipe.reader, service=pipe.reading())
     except Exception:
         log.exception("drawing-sheet read failed")
         return None
+
+
+def _values_detail(read) -> str:
+    """What the numbers step found: a drawing's scale, or a sketch's overall sizes (a sketch has no scale)."""
+    if read.kind == "sketch":
+        n, sizes = len(read.scale.dimensions), sum(d.view is not None for d in read.scale.dimensions)
+        return (f"{_plural(n, 'value')} read, {_plural(sizes, 'overall size')}" if n
+                else "No numbers read: type the sizes")
+    used = len(read.scale.used)
+    return (f"{used} dimension{'s' if used != 1 else ''} give the scale" if used
+            else "No dimensions read: type the sizes")
 
 
 def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "auto") -> None:
@@ -349,12 +361,16 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
     try:
         progress("stage", {"key": "views", "state": "running"})
         read = _drawn_sheet(image.data, pipe, projection)
+        page = read if isinstance(read, MvAbstain) else None
+        if page is not None:  # the photo is no usable page: say why and what to do
+            raise RuntimeError(f"{page.remedy} ({page.stage}: {page.reason})")
         if read is not None:
-            from s2c.multiview.sheet_read import link_diameters
+            from s2c.multiview.sheet_read import link_diameters, link_sizes
             naming, crops = read.naming, read.crops
+            tool = "Sketch reader" if read.kind == "sketch" else "Drawing reader"
             with job.lock:
                 for key in ("views", "lines", "values"):
-                    job.stage(key).update(tool="Drawing reader", ai=False)
+                    job.stage(key).update(tool=tool, ai=False)
                 job.images = [{"index": k, "width": 0, "height": 0, "face": c.face,
                                "kind": "drawing", "outline": None, "circles": [], "reads": []}
                               for k, c in enumerate(crops)]
@@ -367,13 +383,12 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
             progress("stage", {"key": "lines", "state": "running"})
             observed = pipe.observe(read.inputs(), None, progress=fused)
             progress("stage", {"key": "lines", "state": "done", "detail": "centre and hidden lines read"})
-            used = len(read.scale.used)
-            progress("stage", {"key": "values", "state": "done" if used else "skipped",
-                               "detail": f"{used} dimension{'s' if used != 1 else ''} give the scale" if used
-                               else "No dimensions read: type the sizes"})
+            progress("stage", {"key": "values", "state": "done" if read.scale.dimensions else "skipped",
+                               "detail": _values_detail(read)})
             if isinstance(observed, MvAbstain):
                 _finish(job, observed, {})
                 return
+            link_sizes(read, observed)
             link_diameters(read, observed)
             observed.warnings[:0] = read.warnings
             with job.merge_lock:

@@ -26,9 +26,9 @@ const COPY: Record<StageKey, { name: string; run: string }> = {
   read: { name: 'Reading your numbers', run: 'Reading what you wrote' },
   draw: { name: 'Drawing the missing face', run: 'Filling in the faces you did not send' },
   fuse: { name: 'Putting it together', run: 'Snapping the views into one part' },
-  // "One sheet (all views)": the sketch reader's own three stages.
-  views: { name: 'Finding the views', run: 'Finding the views drawn on your sheet' },
-  lines: { name: 'Reading the lines', run: 'Classifying the lines and arcs you drew' },
+  // "One sheet (all views)": find the faces, label and complete them, read the numbers.
+  views: { name: 'Finding the faces', run: 'Finding the views drawn on your sheet' },
+  lines: { name: 'Labelling and completing the faces', run: 'Naming each face and reading its inner lines' },
   values: { name: 'Reading your numbers', run: 'Reading what you wrote' },
 };
 

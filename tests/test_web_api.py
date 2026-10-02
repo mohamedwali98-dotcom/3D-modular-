@@ -448,3 +448,39 @@ def test_a_dimensioned_sheet_builds_with_no_typed_size(monkeypatch):
     assert spec and job["result"]["abstain"] is None, job["result"]
     assert spec["provenance"]["envelope.x_mm"] == "measured"
     assert abs(spec["envelope"]["x_mm"] - 80) < 1.5
+
+
+def test_a_hand_sketch_photo_builds_from_its_written_sizes(monkeypatch):
+    """A phone photo of a pen sketch in sheet mode: page, faces, labels, numbers; the envelope is the user's own."""
+    import cv2
+
+    from tests.hand_views import hand_photo
+    from tests.line_views import WordReader
+    from tests.test_mv_relief import _block
+    def no_sketch(image_bytes):
+        raise AssertionError("the team's sketch reader must not run when the five steps read the sketch")
+    monkeypatch.setattr("s2c.sketch.read_sketch", no_sketch, raising=False)
+    photo, words = hand_photo(_block(), faces=("front", "top", "right"), layout="third")
+    app.dependency_overrides[get_pipeline] = lambda: MvPipeline(reader=WordReader(words))
+    try:
+        r = c.post("/api/analyze", files=[("files", ("p.jpg", cv2.imencode(".jpg", photo)[1].tobytes(), "image/jpeg"))],
+                   data={"mode": "sheet", "projection": "third"})
+        job = _wait(r.json()["job_id"])
+    finally:
+        app.dependency_overrides[get_pipeline] = lambda: MvPipeline()
+    assert job["status"] == "done", job
+    assert {i["face"] for i in job["images"]} == {"front", "top", "right"}
+    assert job["stages"][0]["tool"] == "Sketch reader"
+    spec = job["result"]["spec"]
+    assert spec and spec["provenance"]["envelope.x_mm"] == "user_written", job["result"]
+    assert (spec["envelope"]["x_mm"], spec["envelope"]["y_mm"], spec["envelope"]["z_mm"]) == (80, 60, 70)
+
+
+def test_a_dark_photo_in_sheet_mode_fails_with_the_page_remedy(monkeypatch):
+    import cv2
+    import numpy as np
+    monkeypatch.setattr("s2c.sketch.read_sketch", lambda image_bytes: _fake_sheet_reading(), raising=False)
+    dark = cv2.imencode(".png", np.full((900, 1200, 3), 20, np.uint8))[1].tobytes()
+    r = c.post("/api/analyze", files=[("files", ("d.png", dark, "image/png"))], data={"mode": "sheet"})
+    job = _wait(r.json()["job_id"])
+    assert job["status"] == "failed" and job["error"]

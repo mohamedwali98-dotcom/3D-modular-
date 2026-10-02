@@ -263,3 +263,18 @@ def test_the_sheet_example_builds(studio):
               if (m := re.search(r"match ([0-9.]+)", label))}
     assert set(scores) == {i.face for i in session.items}, scores
     assert min(scores.values()) >= 0.9, scores
+
+
+def test_a_hand_sketch_photo_is_split_into_named_faces_and_renamed_on_its_page(studio, tmp_path):
+    """A phone photo of a pen sketch: one item per face; the projection switch renames them on the sketch's page."""
+    from tests.hand_views import hand_photo
+    from tests.test_mv_relief import _block
+    photo, _ = hand_photo(_block(), faces=("front", "top", "right"), layout="third")
+    sid = studio.store.new()
+    studio.set_projection(sid, "third")
+    studio.add_images(sid, [save(tmp_path, photo, "sketch.jpg")])
+    session = studio.store.get(sid)
+    assert sorted(i.face for i in session.items) == ["front", "right", "top"]
+    assert all(i.mm_per_px is None for i in session.items)  # a sketch is never to scale
+    studio.set_projection(sid, "first")
+    assert sorted(i.face for i in session.items) == ["bottom", "front", "left"]

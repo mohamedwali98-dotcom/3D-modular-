@@ -32,7 +32,7 @@ from s2c.multiview.settings import (
     filament_metres,
 )
 from s2c.multiview.sheet import SKIP
-from s2c.multiview.sheet_read import choose_naming, read_sheet
+from s2c.multiview.sheet_read import choose_naming, read_drawing
 from s2c.studio.session import Item, SessionStore
 from s2c.studio.theme import FACE_BADGES, TRUSTED, bullet_html, card, chip, source_chip, stats_html
 
@@ -206,8 +206,9 @@ class Studio:
         if image is None:
             return None
         pipe = self.pipe.configured(session.ai)  # the user's AI switches (Qwen-VL reader off) hold here too
-        read = read_sheet(image, session.projection, reader=pipe.reader, service=pipe.reading(), keep_unnamed=True)
-        if read is None:
+        read = read_drawing(image, session.projection, reader=pipe.reader, service=pipe.reading(),
+                            keep_unnamed=True)
+        if read is None or isinstance(read, S.MvAbstain):  # no sheet of views, or a photo with no usable page
             return None
         sheet_id, folder = uuid.uuid4().hex[:8], self._sheet_folder(session.id)
         items = []
@@ -217,6 +218,11 @@ class Studio:
             items.append(Item(uuid.uuid4().hex[:8], str(crop), f"{Path(path).name} · view {c.view + 1}", c.face,
                               "drawing", sheet_id, c.view, mm_per_px=read.scale.mm_per_px))
         read.sheet.warnings += [w for w in read.warnings if w not in read.naming.warnings]
+        if read.kind == "sketch":  # its views are on the rectified page, not on the photo: rename them there
+            page = folder / sheet_id / f"{Path(path).stem}.png"
+            page.parent.mkdir(exist_ok=True)
+            cv2.imencode(".png", read.page.image)[1].tofile(str(page))
+            path = str(page)
         session.sheets[sheet_id] = (path, read.sheet, read.naming)
         return items
 
