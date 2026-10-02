@@ -218,3 +218,14 @@ def test_a_thin_flange_stays_part_of_its_view():
     front = next(v for v in sheet.drawings[0].views if _close(v.box, boxes["front"], 8))
     body, _ = view_body(ink, front.box, long)
     assert _close(body, boxes["front"], 6), (body, boxes["front"])
+
+
+def test_an_outline_drawn_in_uneven_weights_keeps_its_whole_body():
+    """A scan or a screenshot: some edges of the outline print thinner than the inner lines. The thin edges are
+    still the outline; the view keeps its full body."""
+    ink = np.zeros((300, 300), np.uint8)
+    cv2.rectangle(ink, (40, 40), (220, 240), 255, 1)    # outline, printed thin
+    cv2.rectangle(ink, (40, 40), (110, 110), 255, 3)     # a notch's lines, printed thick
+    cv2.line(ink, (220, 40), (220, 240), 255, 3)
+    body, _ = view_body(ink, (30, 30, 210, 220), 300)
+    assert _close(body, (39, 39, 183, 203), 4), body

@@ -701,6 +701,9 @@ def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
     strict = _solid(sub, sub)
     if strict is None:
         return box, sub
+    banded = _solid(sub & ~(_thin_lines(sub) > 0), sub)
+    if banded is not None and _band_off(banded[0], strict[0]):
+        strict = banded  # the thin-weight dimension lines had closed a band onto the view
     closed = cv2.morphologyEx(sub.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((7, 7), np.uint8)) > 0
     mended = _solid(closed, sub)
     (bx, by, bw, bh), body = strict
@@ -711,6 +714,19 @@ def view_body(ink: np.ndarray, box: Box, long: int) -> tuple[Box, np.ndarray]:
         if around >= rim and bw * bh < 0.7 * mw * mh:                       # dimensions sit on one or two sides
             (bx, by, bw, bh), body = mended
     return (x + bx, y + by, bw, bh), body
+
+
+def _band_off(inner: Box, outer: Box, tol: int = 3) -> bool:
+    """`inner` is `outer` with a dimension band taken off one or two sides: it lies inside, keeps most of the area,
+    and at least two of its sides stay where `outer`'s are. An outline that only looked thin (uneven lines in a
+    scan) loses far more, and the view keeps its full body."""
+    ix, iy, iw, ih = inner
+    ox, oy, ow, oh = outer
+    if (ix, iy, iw, ih) == (ox, oy, ow, oh) or iw * ih < 0.6 * ow * oh:
+        return False
+    inside = ix >= ox - tol and iy >= oy - tol and ix + iw <= ox + ow + tol and iy + ih <= oy + oh + tol
+    same = [abs(ix - ox) <= tol, abs(iy - oy) <= tol, abs(ix + iw - ox - ow) <= tol, abs(iy + ih - oy - oh) <= tol]
+    return inside and sum(same) >= 2
 
 
 def _thin_lines(sub: np.ndarray) -> np.ndarray:
@@ -746,7 +762,6 @@ def _solid(drawn: np.ndarray, sub: np.ndarray) -> tuple[Box, np.ndarray] | None:
     (an extension line, a centre-line tail) encloses nothing and is left out. None when nothing closed survives."""
     dist = cv2.distanceTransform(sub.astype(np.uint8), cv2.DIST_L2, 3)
     stroke = 2 * max(1.0, float(np.percentile(dist[sub], 90))) if sub.any() else 2.0
-    drawn = drawn & ~(_thin_lines(sub) > 0)
     filled = ndimage.binary_fill_holes(drawn)
     k = max(5, int(2 * stroke) + 1) | 1
     core = cv2.morphologyEx(filled.astype(np.uint8), cv2.MORPH_OPEN, np.ones((k, k), np.uint8))
