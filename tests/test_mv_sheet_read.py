@@ -93,3 +93,37 @@ def test_without_a_reader_the_sheet_still_splits_and_names():
     read = read_sheet(img, "auto")
     assert read.scale.mm_per_px is None and _faces(read) == sorted(THIRD)
     assert np.all([c.png for c in read.crops])
+
+
+def _hole_sheet(callout: str):
+    part = _block().faces(">Z").workplane(centerOption="CenterOfBoundBox").hole(12)
+    img, boxes, words = drawing_sheet(part, faces=THIRD, layout="third", gap=220)
+    ink = 255 - cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    fx, fy, fw, fh = boxes["front"]
+    cx, cy = fx + fw // 2, fy + fh // 2
+    box = _text(ink, callout, fx + fw + 20, cy - 30, 22, False)
+    cv2.line(ink, (cx + 24, cy), (fx + fw + 18, cy - 8), 255, 1)
+    return cv2.cvtColor(255 - ink, cv2.COLOR_GRAY2BGR), [*words, (box, callout)]
+
+
+def _front_hole(callout: str):
+    img, words = _hole_sheet(callout)
+    read = read_sheet(img, "third", service=_service(words))
+    pipe = MvPipeline()
+    observed = pipe.observe(read.inputs())
+    link_diameters(read, observed)
+    spec = pipe.fuse(observed)
+    k = next(i for i, f in enumerate(spec.features) if f.type == "hole" and f.face == "front")
+    return spec, k
+
+
+def test_a_radius_is_never_a_hole_size():
+    spec, k = _front_hole("R5")
+    assert spec.features[k].diameter_mm == pytest.approx(12, abs=0.6)
+    assert spec.provenance[f"features[{k}].diameter_mm"] == "measured"
+
+
+def test_a_written_diameter_far_from_the_drawn_hole_is_flagged():
+    spec, k = _front_hole("D20")
+    assert spec.provenance[f"features[{k}].diameter_mm"] != "user_written"
+    assert any("D20" in w for w in spec.warnings)

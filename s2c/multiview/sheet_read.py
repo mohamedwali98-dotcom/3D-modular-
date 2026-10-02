@@ -179,14 +179,18 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
     return SheetRead(sheet, naming, _crops(sheet, image, naming, keep_unnamed), scale, warnings)
 
 
+DIAMETER_OFF = 0.10  # a written Ø further than this from the measured circle is flagged, not trusted
+
+
 def link_diameters(read: SheetRead, observed) -> None:
-    """A ⌀ or R written next to a drawn circle is that hole's size, written by the user: attach it to the circle
-    of the observation it was drawn in (rule 2: user_written)."""
+    """A Ø written next to a drawn circle is that hole's size, written by the user: attach it to the circle of the
+    observation it was drawn in (rule 2: user_written). An R is a corner or an arc, never linked to a hole. With
+    the sheet's scale known, a Ø more than DIAMETER_OFF from the measured circle is kept as a check, with a note."""
     from s2c.multiview.ocr import Linked, Reading
-    dims = [d for d in read.scale.dimensions if d.kind in ("diameter", "radius")]
+    from s2c.multiview.outline import LONG_SIDE
+    dims = [d for d in read.scale.dimensions if d.kind == "diameter"]
     if not dims or not observed.observations:
         return
-    from s2c.multiview.outline import LONG_SIDE
     circles = []  # (sheet x, sheet y, sheet radius, observation index, circle index)
     for k, (crop, o) in enumerate(zip(read.crops, observed.observations, strict=False)):
         f = LONG_SIDE / max(crop.long, 1)
@@ -198,6 +202,12 @@ def link_diameters(read: SheetRead, observed) -> None:
         best = min(circles, key=lambda c: np.hypot(c[0] - cx, c[1] - cy) - c[2], default=None)
         if best is None or np.hypot(best[0] - cx, best[1] - cy) - best[2] > 3 * max(w, h):
             continue
+        confirmed = d.confirmed
+        if read.scale.mm_per_px:
+            measured = 2 * best[2] * read.scale.mm_per_px
+            if abs(d.value_mm - measured) > DIAMETER_OFF * measured:
+                confirmed = False
+                observed.warnings.append(f"{d.text} is written by a hole drawn about {measured:.1f} mm wide; "
+                                         "check the diameter.")
         o = observed.observations[best[3]]
-        value = d.value_mm * (2 if d.kind == "radius" else 1)
-        o.values.append(Linked(Reading(value, "diameter", d.box, 0.95, d.text, d.confirmed), None, best[4]))
+        o.values.append(Linked(Reading(d.value_mm, "diameter", d.box, 0.95, d.text, confirmed), None, best[4]))
