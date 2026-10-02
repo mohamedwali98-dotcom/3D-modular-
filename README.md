@@ -114,7 +114,7 @@ The vision model is chosen by three environment variables: `VLM_BASE_URL`, `VLM_
 
 Give one or more images per face, several of the same face if you have them: they are aligned and voted into one cleaner outline. Qwen-VL reads the numbers you wrote. Faces you did not give are drawn by Qwen-Image and kept only if they agree with the faces you did give; otherwise TripoSR, otherwise a rectangle. Solaria's depth map tells through holes from blind ones. The part is the intersection of the three extruded outlines, sliced to G-code. Designs: `docs/superpowers/specs/2026-09-22-multiview-gcode-design.md` and `docs/superpowers/specs/2026-09-23-qwen-solaria-design.md`.
 
-**One image, five steps** (`s2c/multiview/sheet_read.read_drawing`; spec `docs/superpowers/specs/2026-10-02-sketch-to-model-design.md`). Give one clean drawing or one phone photo of a pen sketch holding several views:
+**One image, five steps** (`s2c/multiview/sheet_read.read_drawing`; spec `docs/superpowers/specs/2026-10-02-sketch-to-model-design.md`). Give one drawing made on a computer, one scan or one phone photo of a pen sketch, holding several views:
 
 1. **Page:** a photo becomes a clean page (the sheet found, flattened, the ink binarised).
 2. **Faces:** each closed outline is a face. Dimension, miter and centre lines never join two views.
