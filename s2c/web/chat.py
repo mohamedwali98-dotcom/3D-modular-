@@ -49,7 +49,7 @@ Reply with one JSON object only, no other text:
 "holes": [{"a_mm": <number>, "b_mm": <number>, "diameter_mm": <number>}]}}
 "part" must be filled (not null) as soon as the part type is known, with every size the user gave so far in "values", repeated on every turn. Example: the user says "a plate 60 by 40, 5 thick" -> {"reply": "Got it. Any holes?", "options": ["No holes", "Two holes", "Four holes"], "part": {"type": "plate", "values": {"width_mm": 60, "height_mm": 40, "thickness_mm": 5}, "holes": []}}"""
 
-_PROCESS_KEY = secrets.token_bytes(32)  # without an access token, replies are signed for this process's life
+_PROCESS_KEY = secrets.token_bytes(32)  # the server's alone: never derived from anything a client holds
 _NUM = re.compile(r"\d+(?:\.\d+)?")
 _COMMA_DECIMAL = re.compile(r"(\d+),(\d+)")
 
@@ -179,15 +179,10 @@ def filter_part(raw: object, nums: set[float]) -> tuple[PartRequest | None, list
     return part, list(dict.fromkeys(check(part) + dropped))
 
 
-def _key() -> bytes:
-    token = os.environ.get("S2C_ACCESS_TOKEN")
-    return hashlib.sha256(f"s2c-chat:{token}".encode()).digest() if token else _PROCESS_KEY
-
-
 def sign(reply: str) -> str:
     """The server's mark on a reply it wrote. The client sends the conversation back every turn, so an assistant
     turn it made up (to steer the model off its rules) is told apart from ours."""
-    return hmac.new(_key(), reply.encode(), hashlib.sha256).hexdigest()
+    return hmac.new(_PROCESS_KEY, reply.encode(), hashlib.sha256).hexdigest()  # a restart starts conversations over
 
 
 def signed(role: str, content: str, sig: str | None) -> bool:
