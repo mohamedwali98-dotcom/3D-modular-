@@ -55,7 +55,7 @@ Requirements: Python 3.11, [uv](https://docs.astral.sh/uv/), Node 20.
 
 Docker runs the built React app and FastAPI backend together on one port. The local `.env` is loaded at runtime but is never copied into the image. If `.env` is missing, the offline path still works.
 
-**Access token.** The API answers only the computer it runs on unless `S2C_ACCESS_TOKEN` is set in `.env`. Docker's port forwarding makes every browser look like another device, so set the token before `docker compose up`; the web app asks for it once and keeps it in that browser. Calls are also rate-limited per client, and at most two parts build at once.
+**Access token.** The API answers only the computer it runs on unless `S2C_ACCESS_TOKEN` is set in `.env`. Docker's port forwarding makes every browser look like another device, so set the token before `docker compose up`; the web app asks for it once and keeps it in that browser. Calls are also rate-limited per client, and at most two parts build at once. Analyses live in the server's memory for an hour after their last use, so run one worker (the image does); a restart forgets them.
 
 ```bash
 docker compose up --build

@@ -48,7 +48,8 @@ USER appuser
 
 EXPOSE 8000
 ENTRYPOINT ["docker-entrypoint"]
-CMD ["uvicorn", "s2c.web.server:app", "--host", "0.0.0.0", "--port", "8000"]
+# One worker: analysis jobs live in this process's memory (s2c/web/jobs.py); a second worker would not find them.
+CMD ["uvicorn", "s2c.web.server:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
 
 HEALTHCHECK --interval=10s --timeout=5s --start-period=60s --retries=5 \
     CMD ["python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/status', timeout=4)"]

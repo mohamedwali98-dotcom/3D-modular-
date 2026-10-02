@@ -1,7 +1,9 @@
 """Analysis jobs for the web app: one record per /api/analyze, filled by the pipeline's progress events.
-Jobs live in memory for one hour. The job id is also the request id that /api/merge and /api/model use."""
+Jobs live in this process's memory for one hour after their last use (so the server runs one worker); past MAX_JOBS
+the least recently used finished ones go first. The job id is also the request id /api/merge and /api/model use."""
 from __future__ import annotations
 
+import itertools
 import logging
 import os
 import threading
@@ -30,7 +32,7 @@ ALL_STAGE_KEYS = frozenset({*STAGES, *SHEET_STAGES})
 SHEET_UNAVAILABLE = ("Sheet reading is not available yet. Use per-face photos, or try again once "
                      "it is deployed.")
 MAX_RUNNING = 3   # analyses running at once; past this /api/analyze answers 429
-MAX_JOBS = 50     # jobs kept in memory; the oldest finished ones go first
+MAX_JOBS = 200    # jobs kept in memory; the least recently used finished ones go first
 DRAW_TOOLS = {"qwen-image": ("Qwen-Image", True), "triposr": ("TripoSR", True), "mirrored": ("mirror", False),
               "assumed": ("assumed", False)}
 DRAW_WORDS = {"qwen-image": "drawn — check it", "triposr": "predicted — check it", "mirrored": "mirrored",
@@ -62,6 +64,8 @@ class Job:
     error: str | None = None
     observed: Observed | None = None
     created: float = field(default_factory=time.time)
+    used: float = field(default_factory=time.time)  # the last status poll or merge: a job on Review stays
+    use: int = field(default_factory=lambda: next(_USES))
     cancel: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
     merge_lock: threading.Lock = field(default_factory=threading.Lock)  # fuse mutates the cached Observed
@@ -80,6 +84,7 @@ class Job:
 
 
 JOBS: dict[str, Job] = {}
+_USES = itertools.count()  # the order of use: the clock can give two jobs the same time
 _ACTIVE: set[str] = set()  # jobs whose analysis thread is running
 _registry_lock = threading.Lock()
 
@@ -132,7 +137,7 @@ def new_sheet_job(pipe: MvPipeline) -> Job:
 
 def _register(job: Job) -> None:
     with _registry_lock:
-        idle = sorted((j for jid, j in JOBS.items() if jid not in _ACTIVE), key=lambda j: j.created)
+        idle = sorted((j for jid, j in JOBS.items() if jid not in _ACTIVE), key=lambda j: j.use)
         for old in idle[:max(0, len(JOBS) + 1 - MAX_JOBS)]:
             del JOBS[old.job_id]
         JOBS[job.job_id] = job
@@ -143,10 +148,14 @@ def get_job(job_id: str) -> Job | None:
         return JOBS.get(job_id)
 
 
+def touch(job: Job) -> None:
+    job.used, job.use = time.time(), next(_USES)
+
+
 def sweep_jobs(ttl: float = TTL_S) -> None:
     now = time.time()
     with _registry_lock:
-        for jid in [j for j, job in JOBS.items() if now - job.created > ttl]:
+        for jid in [j for j, job in JOBS.items() if now - job.used > ttl]:
             del JOBS[jid]
 
 

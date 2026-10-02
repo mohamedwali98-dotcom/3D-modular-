@@ -233,16 +233,16 @@ def test_a_fourth_running_job_is_told_the_server_is_busy():
         _wait(jid)
 
 
-def test_the_registry_keeps_at_most_50_jobs_dropping_the_oldest_finished():
+def test_the_registry_keeps_at_most_max_jobs_dropping_the_least_used_finished():
     from s2c.web import jobs
     saved = dict(jobs.JOBS)
     jobs.JOBS.clear()
     try:
         first = jobs.new_job(1, MvPipeline())
         first.status = "done"
-        for _ in range(60):
+        for _ in range(jobs.MAX_JOBS + 10):
             jobs.new_job(1, MvPipeline()).status = "done"
-        assert len(jobs.JOBS) <= 50 and first.job_id not in jobs.JOBS
+        assert len(jobs.JOBS) <= jobs.MAX_JOBS and first.job_id not in jobs.JOBS
     finally:
         jobs.JOBS.clear()
         jobs.JOBS.update(saved)

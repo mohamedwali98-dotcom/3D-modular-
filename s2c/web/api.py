@@ -200,6 +200,7 @@ def _job(job_id: str) -> jobs.Job:
     job = jobs.get_job(job_id) if files.JOB_ID.match(job_id) else None
     if job is None:
         raise HTTPException(404, UNKNOWN)
+    jobs.touch(job)
     return job
 
 
