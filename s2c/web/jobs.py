@@ -42,6 +42,15 @@ class JobCancelled(Exception):
     pass
 
 
+class UserFacing(Exception):
+    """A message written for the person using the app (a remedy). Only these reach the browser: any other error,
+    a library's RuntimeError included, gives the fixed FAILED sentence."""
+
+    def __init__(self, remedy: str, detail: str = ""):
+        super().__init__(remedy)
+        self.remedy, self.detail = remedy, detail  # detail (stage and reason slugs) goes to the log only
+
+
 @dataclass
 class Job:
     job_id: str
@@ -309,7 +318,7 @@ def _sheet_reading(image_bytes: bytes):
     try:
         from s2c.sketch import read_sketch
     except ImportError as e:
-        raise RuntimeError(SHEET_UNAVAILABLE) from e
+        raise UserFacing(SHEET_UNAVAILABLE) from e
     return read_sketch(image_bytes)
 
 
@@ -362,7 +371,7 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
         read = _drawn_sheet(image.data, pipe, projection)
         page = read if isinstance(read, MvAbstain) else None
         if page is not None:  # the photo is no usable page: say why and what to do
-            raise RuntimeError(f"{page.remedy} ({page.stage}: {page.reason})")
+            raise UserFacing(page.remedy, f"{page.stage}: {page.reason}")
         if read is not None:
             from s2c.multiview.sheet_read import observe_drawing
             naming, crops = read.naming, read.crops
@@ -397,8 +406,9 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
         if reading.abstain is not None or not reading.views:
             # say why and what to do; falling through would leave Review asking for a width with no views
             a = reading.abstain
-            raise RuntimeError(f"{a.remedy} ({a.stage}: {a.reason})" if a is not None else
-                               "No views found on the sheet. Draw the views with a dark pen and retake.")
+            raise UserFacing(a.remedy if a is not None else
+                             "No views found on the sheet. Draw the views with a dark pen and retake.",
+                             f"{a.stage}: {a.reason}" if a is not None else "no views")
         progress("stage", {"key": "views", "state": "done", "detail": f"{len(reading.views)} views found"})
         progress("stage", {"key": "lines", "state": "running"})
         progress("stage", {"key": "lines", "state": "done",
@@ -415,10 +425,10 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
     except JobCancelled:
         with job.lock:
             job.status = "cancelled"
-    except RuntimeError as e:
-        log.warning("sheet analysis %s: %s", job.job_id, e)
+    except UserFacing as e:
+        log.warning("sheet analysis %s: %s (%s)", job.job_id, e.remedy, e.detail)
         with job.lock:
-            job.status, job.error = "failed", str(e)
+            job.status, job.error = "failed", e.remedy
             for stage in job.stages:
                 if stage["state"] == "running":
                     stage.update(state="failed", ended=time.time())

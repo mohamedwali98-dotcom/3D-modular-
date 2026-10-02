@@ -392,7 +392,7 @@ def test_analyze_sheet_mode_surfaces_the_abstain_reason_and_remedy(monkeypatch):
               data={"mode": "sheet"})
     job = _wait(r.json()["job_id"])
     assert job["status"] == "failed"
-    assert "Retry in a minute" in job["error"] and "readers_unavailable" in job["error"]
+    assert job["error"] == "Reading service unavailable. Retry in a minute."  # the reason slug goes to the log
     assert job["stages"][0]["state"] == "failed"
 
 
@@ -491,3 +491,26 @@ def test_the_legacy_mv_routes_are_not_served():
     assert not [p for p in app.openapi()["paths"] if p.startswith("/mv")]
     files = [("files", ("front.png", (SK / "front.png").read_bytes(), "image/png"))]
     assert c.post("/mv/analyze", files=files).status_code in (404, 405)
+
+
+SHEET = Path(__file__).resolve().parents[1] / "examples" / "mv" / "sheet" / "sheet.png"
+
+
+def _sheet_job() -> dict:
+    r = c.post("/api/analyze", files=[("files", ("sheet.png", SHEET.read_bytes(), "image/png"))],
+               data={"mode": "sheet"})
+    assert r.status_code == 202, r.text
+    return _wait(r.json()["job_id"])
+
+
+def test_a_library_error_in_a_sheet_job_never_reaches_the_browser(monkeypatch):
+    """A CUDA out-of-memory error is a RuntimeError, like the job's own messages once were: its text (paths,
+    sizes) must never be shown; the job fails with the fixed sentence."""
+    from s2c.web import jobs
+
+    def boom(*a, **k):
+        raise RuntimeError("CUDA out of memory. Tried to allocate 2.00 GiB in C:/secret/path")
+    monkeypatch.setattr("s2c.multiview.sheet_read.observe_drawing", boom)
+    job = _sheet_job()
+    assert job["status"] == "failed" and job["error"] == jobs.FAILED
+    assert "CUDA" not in json.dumps(job)
