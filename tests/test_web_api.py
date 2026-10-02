@@ -533,3 +533,13 @@ def test_without_ai_settings_no_image_goes_to_a_hosted_service():
     job = analyze()
     pipe = jobs.get_job(job["job_id"]).pipe
     assert not pipe.draw_faces and not pipe.rescue_enabled and pipe.mesh_provider is None and pipe.depth is None
+
+
+def test_building_the_model_counts_as_using_the_job():
+    """A long stay on Model & Export keeps the analysis alive like a status poll does."""
+    from s2c.web import jobs
+    spec = json.loads((Path(__file__).resolve().parents[1] / "examples" / "mv" / "l_bracket.json").read_text())
+    job = jobs.new_job(1, MvPipeline())
+    job.status, job.used = "done", 0.0
+    r = c.post("/api/model", json={"request_id": job.job_id, "spec": spec})
+    assert r.status_code == 200 and job.used > 0

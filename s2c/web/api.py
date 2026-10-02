@@ -256,6 +256,8 @@ def model(body: ModelBody) -> dict:
             cv2.imwrite(str(path), mask)
         views[face] = f"{base}/{path.name}"
     job = jobs.get_job(body.request_id) if body.request_id and files.JOB_ID.match(body.request_id) else None
+    if job is not None:
+        jobs.touch(job)
     masks = job.observed.masks if job is not None and job.observed is not None else {}
     scores = {f: round(iou(part.views[f], m), 3) for f, m in masks.items() if f in part.views}
     warnings = list(dict.fromkeys([*part.spec.warnings, *part.warnings]))
