@@ -339,8 +339,9 @@ def _sentence(status: int, detail: object) -> str:
 
 
 class BodyLimit:
-    """An /api body over MAX_BODY (MAX_JSON for JSON) is refused: at once when its Content-Length says so, and
-    otherwise counted as it streams (a chunked upload, or a length that lies) and cut at the limit."""
+    """An /api body over its limit is refused: MAX_BODY for a multipart upload (the images), MAX_JSON for anything
+    else, however its type is spelled. At once when its Content-Length says so, and otherwise counted as it streams
+    (a chunked upload, or a length that lies) and cut at the limit."""
 
     def __init__(self, app):
         self.app = app
@@ -349,8 +350,8 @@ class BodyLimit:
         if scope["type"] != "http" or not scope["path"].startswith("/api"):
             return await self.app(scope, receive, send)
         headers = dict(scope["headers"])
-        json_body = headers.get(b"content-type", b"").startswith(b"application/json")
-        limit, sentence = (MAX_JSON, TOO_LARGE_JSON) if json_body else (MAX_BODY, SENTENCES[413])
+        upload = headers.get(b"content-type", b"").lower().startswith(b"multipart/form-data")
+        limit, sentence = (MAX_BODY, SENTENCES[413]) if upload else (MAX_JSON, TOO_LARGE_JSON)
         declared = headers.get(b"content-length", b"")
         if declared.isdigit() and int(declared) > limit:
             return await JSONResponse({"error": sentence}, status_code=413)(scope, receive, send)

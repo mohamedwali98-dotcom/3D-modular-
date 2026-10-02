@@ -47,3 +47,11 @@ def test_a_body_without_content_length_is_cut_at_the_limit(monkeypatch):
     r = c.post("/api/analyze", content=(b"x" * 500 for _ in range(4)),
                headers={"Content-Type": "multipart/form-data; boundary=zz"})
     assert r.status_code == 413
+
+
+def test_only_a_multipart_upload_gets_the_image_sized_limit():
+    """FastAPI parses "Application/JSON" and "application/*+json" as JSON too: every body that is not a multipart
+    upload is held to the JSON limit, however its type is spelled."""
+    body = b'{"request_id": "' + b"0" * (3 * 1024 * 1024) + b'"}'
+    for kind in ("Application/JSON", "application/merge-patch+json", "text/plain"):
+        assert c.post("/api/merge", content=body, headers={"Content-Type": kind}).status_code == 413, kind
