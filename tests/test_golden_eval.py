@@ -45,10 +45,17 @@ def test_samples_are_folders_with_an_image_and_its_truth(tmp_path):
     assert [s.name for s in golden.samples(tmp_path)] == ["a"]  # b is drawn by its test, c has no truth
 
 
+def test_the_gate_waits_for_the_reader_weights(tmp_path):
+    """Without TrOCR's weights in the cache (tests run offline) the gate skips instead of scoring every value 0."""
+    assert golden.reader_ready(cache_dir=tmp_path) is False
+
+
 def test_the_golden_set_holds_its_baseline():
     """The real photos in tests/golden_sketch, read with TrOCR only, must not fall below the committed baseline.
-    Skipped without the trocr extra."""
+    Skipped without the trocr extra or its downloaded weights."""
     pytest.importorskip("transformers")
+    if not golden.reader_ready():
+        pytest.skip("the TrOCR weights are not downloaded (uv run python scripts/golden_eval.py fetches them)")
     summary = golden.evaluate(GOLDEN)["summary"]
     baseline = json.loads((GOLDEN / "baseline.json").read_text(encoding="utf-8"))
     assert golden.regressions(summary, baseline) == [], summary

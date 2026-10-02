@@ -134,6 +134,19 @@ def regressions(summary: dict, baseline: dict, tol: float = TOLERANCE) -> list[s
     return out
 
 
+def reader_ready(cache_dir=None) -> bool:
+    """Whether TrOCR's weights are in the Hugging Face cache, so a run offline (the tests) can read at all."""
+    import os
+
+    from s2c.reading.trocr import DEFAULT_MODEL
+    try:
+        from huggingface_hub import try_to_load_from_cache
+    except ImportError:
+        return False
+    found = try_to_load_from_cache(os.environ.get("TROCR_MODEL") or DEFAULT_MODEL, "config.json", cache_dir=cache_dir)
+    return isinstance(found, str)
+
+
 def trocr_pipeline():
     """The readers the gate measures: TrOCR alone, no hosted model, so a run is the same on every machine."""
     from s2c.multiview.pipeline import MvPipeline
