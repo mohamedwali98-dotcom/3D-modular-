@@ -33,6 +33,54 @@ EXPLAINED = 0.15     # a projection that leaves at most this line mismatch expla
 MARGIN = 0.3         # ...and wins when the other leaves at least this much more; otherwise ISO first-angle stays
 
 
+CLEAN_SHARE = 0.97   # a drawing: this share of its pixels is paper or ink...
+CLEAN_GREY = 40      # ...within this many grey levels of the paper or of the darkest ink...
+CLEAN_SAT = 25       # ...and its paper has no colour cast (mean HSV saturation under this)
+
+
+@dataclass
+class Page:
+    """The image the five steps read: black ink on white. A photo of a sketch is its rectified page; a drawing is
+    used as drawn. `to_photo` maps page pixels back to the upload (for overlays)."""
+    image: np.ndarray
+    kind: str            # "sketch" | "drawing"
+    to_photo: np.ndarray
+    stroke_px: float
+
+
+def _clean(image: np.ndarray) -> bool:
+    gray = image if image.ndim == 2 else cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    g = gray.astype(np.int16)
+    paper = float(np.median(np.concatenate([g[0], g[-1], g[:, 0], g[:, -1]])))
+    ink = float(np.percentile(g, 1))
+    if paper < 150 or paper - ink < 3 * CLEAN_GREY:  # no light paper, or nothing drawn on it
+        return False
+    papery = np.abs(g - paper) <= CLEAN_GREY
+    if np.mean(papery | (np.abs(g - ink) <= CLEAN_GREY)) < CLEAN_SHARE:
+        return False
+    if image.ndim == 3 and papery.any():
+        return float(cv2.cvtColor(image, cv2.COLOR_BGR2HSV)[..., 1][papery].mean()) < CLEAN_SAT
+    return True
+
+
+def page_of(image_bgr: np.ndarray) -> Page | S.MvAbstain:
+    """Step 0: a clean drawing is read as drawn; a photo of a sketch goes through the sketch reader's capture (the
+    sheet found, rectified, shadows flattened, ink binarised). A photo it cannot use abstains with its remedy."""
+    image = image_bgr if image_bgr.ndim == 3 else cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
+    if _clean(image):
+        ink = ink_mask(image) > 0
+        dist = cv2.distanceTransform(ink.astype(np.uint8), cv2.DIST_L2, 3)
+        stroke = 2 * float(np.percentile(dist[ink], 75)) if ink.any() else 2.0
+        return Page(image, "drawing", np.eye(3), max(1.0, stroke))
+    from s2c.sketch.capture import capture
+    from s2c.sketch.models import SketchAbstain
+    captured = capture(image)
+    if isinstance(captured, SketchAbstain):
+        return S.MvAbstain(stage="outline", reason=captured.reason, remedy=captured.remedy)
+    page = cv2.cvtColor(np.where(captured.ink > 0, 0, 255).astype(np.uint8), cv2.COLOR_GRAY2BGR)
+    return Page(page, "sketch", np.asarray(captured.to_original, np.float64), float(captured.stroke_px))
+
+
 @dataclass
 class SheetCrop:
     view: int                 # index in the part drawing's views

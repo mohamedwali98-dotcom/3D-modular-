@@ -128,12 +128,13 @@ def iso_view(part: cq.Workplane, px_per_mm: float, line: int = 2) -> np.ndarray:
     return ink
 
 
-def _text(ink: np.ndarray, text: str, x: int, y: int, height: int, vertical: bool) -> tuple[int, int, int, int]:
+def _text(ink: np.ndarray, text: str, x: int, y: int, height: int, vertical: bool,
+          font: int = cv2.FONT_HERSHEY_SIMPLEX) -> tuple[int, int, int, int]:
     """Write `text` with its ink box's top-left corner at (x, y), read left to right or bottom to top."""
     scale, thick = height / 22.0, max(1, round(height / 10))
-    (tw, th), base = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+    (tw, th), base = cv2.getTextSize(text, font, scale, thick)
     tile = np.zeros((th + base + 4, tw + 4), np.uint8)
-    cv2.putText(tile, text, (2, th + 2), cv2.FONT_HERSHEY_SIMPLEX, scale, 255, thick, cv2.LINE_AA)
+    cv2.putText(tile, text, (2, th + 2), font, scale, 255, thick, cv2.LINE_AA)
     ys, xs = np.nonzero(tile > 60)
     tile = tile[ys.min(): ys.max() + 1, xs.min(): xs.max() + 1]
     if vertical:
@@ -153,7 +154,7 @@ def _arrow(ink: np.ndarray, tip: tuple[int, int], toward: tuple[int, int], size:
 
 
 def dimension(ink: np.ndarray, p0: tuple[int, int], p1: tuple[int, int], offset: int, text: str, line: int = 1,
-              height: int = 22, gap: int = 4) -> tuple[int, int, int, int]:
+              height: int = 22, gap: int = 4, font: int = cv2.FONT_HERSHEY_SIMPLEX) -> tuple[int, int, int, int]:
     """An ISO linear dimension between two points of a view edge: extension lines leaving a small gap from the
     edge, a dimension line `offset` px away with arrowheads, and the value over its middle. Horizontal when the
     points share a row (offset > 0: below), vertical when they share a column (offset < 0: left). Returns the
@@ -161,7 +162,7 @@ def dimension(ink: np.ndarray, p0: tuple[int, int], p1: tuple[int, int], offset:
     (x0, y0), (x1, y1) = p0, p1
     over, size = 6, max(3, height // 5)
     scale, thick = height / 22.0, max(1, round(height / 10))
-    (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)
+    (tw, _), _ = cv2.getTextSize(text, font, scale, thick)
     s = 1 if offset > 0 else -1
     if y0 == y1:
         yd = y0 + offset
@@ -170,14 +171,14 @@ def dimension(ink: np.ndarray, p0: tuple[int, int], p1: tuple[int, int], offset:
         cv2.line(ink, (x0, yd), (x1, yd), 255, line)
         _arrow(ink, (x0, yd), (x1, yd), size)
         _arrow(ink, (x1, yd), (x0, yd), size)
-        return _text(ink, text, (x0 + x1) // 2 - tw // 2, yd - height - 6, height, False)
+        return _text(ink, text, (x0 + x1) // 2 - tw // 2, yd - height - 6, height, False, font)
     xd = x0 + offset
     for y in (y0, y1):
         cv2.line(ink, (x0 + s * gap, y), (xd + s * over, y), 255, line)
     cv2.line(ink, (xd, y0), (xd, y1), 255, line)
     _arrow(ink, (xd, y0), (xd, y1), size)
     _arrow(ink, (xd, y1), (xd, y0), size)
-    return _text(ink, text, xd - height - 6, (y0 + y1) // 2 - tw // 2, height, True)
+    return _text(ink, text, xd - height - 6, (y0 + y1) // 2 - tw // 2, height, True, font)
 
 
 GRID3 = {  # (column, row) around the front; row +1 is below it
@@ -188,7 +189,8 @@ _AB = {"front": "xy", "back": "xy", "top": "xz", "bottom": "xz", "right": "zy", 
 
 
 def drawing_sheet(part: cq.Workplane, faces=("front", "top", "left"), layout: str = "first", px_per_mm: float = 4.0,
-                  dims: bool = True, iso: bool = False, line: int = 2, gap: int = 110, ext_gap: int = 4):
+                  dims: bool = True, iso: bool = False, line: int = 2, gap: int = 110, ext_gap: int = 4,
+                  font: int = cv2.FONT_HERSHEY_SIMPLEX):
     """A dimensioned engineering sheet of the part: the views placed by `layout`, each with its overall width (below)
     and height (left) dimensioned in true millimetres, and optionally an isometric picture in a free corner.
     Returns the BGR sheet, the ink box of each view ("iso" for the picture), and the words written: [(box, text)]."""
@@ -224,7 +226,7 @@ def drawing_sheet(part: cq.Workplane, faces=("front", "top", "left"), layout: st
             a_axis, b_axis = _AB[f]
             for p0, p1, off, axis in (((x0, y1), (x1, y1), 40, a_axis), ((x0, y0), (x0, y1), -40, b_axis)):
                 text = f"{size[axis]:g}"
-                words.append((dimension(ink, p0, p1, off, text, gap=ext_gap), text))
+                words.append((dimension(ink, p0, p1, off, text, gap=ext_gap, font=font), text))
     if pic is not None:
         ink[gap: gap + pic.shape[0], x: x + pic.shape[1]] |= pic
         boxes["iso"] = (x, gap, pic.shape[1], pic.shape[0])
