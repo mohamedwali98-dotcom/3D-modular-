@@ -22,6 +22,7 @@ from PIL import Image, ImageOps
 from pydantic import BaseModel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from s2c import MAX_PIXELS
 from s2c.multiview.artifacts import ROOT as ARTIFACT_ROOT
 from s2c.multiview.artifacts import build_part, bundle, export_part, sweep
 from s2c.multiview.pipeline import IOU_GREEN, ImageInput, MvPipeline, default_pipeline
@@ -39,6 +40,7 @@ MAX_FILES = 6
 MAX_BODY = MAX_FILES * MAX_BYTES + 1024 * 1024  # six full images plus the form fields
 MAX_JSON = 2 * 1024 * 1024  # a spec, settings or a chat: far under this
 TOO_LARGE_JSON = "The request is too large."
+TOO_MANY_PIXELS = f"An image is over {MAX_PIXELS // 1_000_000} megapixels. Use a smaller photo."
 MAGIC = (b"\xff\xd8\xff", b"\x89PNG\r\n\x1a\n")
 _EXAMPLE = re.compile(r"^[\w.-]+\.png$")
 UNKNOWN = "Unknown or expired analysis. Analyze again."
@@ -121,6 +123,17 @@ def upright(data: bytes) -> bytes:
         return data
 
 
+def _pixels(data: bytes) -> int:
+    """The image's pixel count from its header alone (Pillow opens lazily): nothing is decoded."""
+    try:
+        with Image.open(io.BytesIO(data)) as im:
+            return im.width * im.height
+    except Image.DecompressionBombError:
+        return MAX_PIXELS + 1
+    except Exception:  # noqa: BLE001 - an unreadable header is refused by the decode later
+        return 0
+
+
 def _json_list(text: str | None, what: str) -> list:
     try:
         value = json.loads(text or "[]")
@@ -159,6 +172,8 @@ def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None
             raise HTTPException(413, "An image is larger than 10 MB. Use a smaller photo.")
         if not data.startswith(MAGIC):
             raise HTTPException(415, "A file is not a JPEG or PNG image.")
+        if _pixels(data) > MAX_PIXELS:
+            raise HTTPException(413, TOO_MANY_PIXELS)
         datas.append(upright(data))
     if ai:
         try:
@@ -321,21 +336,55 @@ def _sentence(status: int, detail: object) -> str:
     return SENTENCES.get(status, f"Something went wrong ({status}). Try again.")
 
 
+class BodyLimit:
+    """An /api body over MAX_BODY (MAX_JSON for JSON) is refused: at once when its Content-Length says so, and
+    otherwise counted as it streams (a chunked upload, or a length that lies) and cut at the limit."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or not scope["path"].startswith("/api"):
+            return await self.app(scope, receive, send)
+        headers = dict(scope["headers"])
+        json_body = headers.get(b"content-type", b"").startswith(b"application/json")
+        limit, sentence = (MAX_JSON, TOO_LARGE_JSON) if json_body else (MAX_BODY, SENTENCES[413])
+        declared = headers.get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > limit:
+            return await JSONResponse({"error": sentence}, status_code=413)(scope, receive, send)
+        received, cut = 0, False
+
+        async def counted():
+            nonlocal received, cut
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:
+                    cut = True
+                    return {"type": "http.disconnect"}  # the rest is never read
+            return message
+
+        async def held(message):
+            if not cut:  # the app's own answer to a cut body is replaced by the 413 below
+                await send(message)
+
+        try:
+            await self.app(scope, counted, held)
+        except Exception:
+            if not cut:
+                raise
+        if cut:
+            await JSONResponse({"error": sentence}, status_code=413)(scope, receive, send)
+
+
 def install_error_handlers(app: FastAPI) -> None:
-    """/api errors render as {"error": ...}; other paths keep FastAPI's default shape.
-    Also refuses an /api body whose Content-Length is over MAX_BODY (MAX_JSON for JSON) before any of it is read."""
+    """/api errors render as {"error": ...}; other paths keep FastAPI's default shape. Bodies are limited
+    (BodyLimit)."""
 
     def api(request: Request) -> bool:
         return request.url.path.startswith("/api")
 
-    @app.middleware("http")
-    async def body_limit(request: Request, call_next):
-        size = request.headers.get("content-length", "")
-        if api(request) and size.isdigit():
-            json_body = request.headers.get("content-type", "").startswith("application/json")
-            if int(size) > (MAX_JSON if json_body else MAX_BODY):
-                return JSONResponse({"error": TOO_LARGE_JSON if json_body else SENTENCES[413]}, status_code=413)
-        return await call_next(request)
+    app.add_middleware(BodyLimit)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:

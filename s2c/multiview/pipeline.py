@@ -172,7 +172,10 @@ class MvPipeline:
         service = self.reading() if reads else None
         excluded: list[tuple] = []
         for i, item in enumerate(images):
-            bgr = cv2.imdecode(np.frombuffer(item.data, np.uint8), cv2.IMREAD_COLOR)
+            try:
+                bgr = cv2.imdecode(np.frombuffer(item.data, np.uint8), cv2.IMREAD_COLOR)
+            except cv2.error:  # past OPENCV_IO_MAX_IMAGE_PIXELS (s2c/__init__.py): refused, never decoded
+                bgr = None
             if bgr is None:
                 return S.MvAbstain(stage="outline", reason="bad_image",
                                    remedy="The file is not an image. Upload a JPEG or PNG.")
