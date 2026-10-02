@@ -55,7 +55,7 @@ interface LedgerGroup {
 
 /** Groups `featureRows` by their check-group (size/position/angle/depth) in first-seen order. */
 function groupFeatures(spec: Spec, typed: Record<string, number>): LedgerGroup[] {
-  const rows = featureRows(spec);
+  const rows = featureRows(spec, typed);
   const order: string[] = [];
   const byGroup = new Map<string, typeof rows>();
   for (const r of rows) {
@@ -84,7 +84,7 @@ function warningMeta(text: string, spec: Spec, typed: Record<string, number>): {
   let done = false;
   if (m) {
     const featureLabel = `${m[1][0].toUpperCase()}${m[1].slice(1).toLowerCase()} ${m[2]}`;
-    const rows = featureRows(spec).filter((r) => r.feature === featureLabel);
+    const rows = featureRows(spec, typed).filter((r) => r.feature === featureLabel);
     if (rows.length) done = rows.every((r) => !isCheck(r.path in typed ? 'user_edited' : r.prov));
   }
   if (done) return { icon: '✓', color: TRU, line: 'solid' };
@@ -238,7 +238,7 @@ export function Review() {
 
   const groups = spec ? groupFeatures(spec, typed) : [];
   const nCheck = spec ? countChecks(spec, typed) : 0;
-  const touched = spec ? featureRows(spec).some((r) => r.path in typed && isCheck(r.prov)) : false;
+  const touched = spec ? featureRows(spec, typed).some((r) => r.path in typed && isCheck(r.prov)) : false;
   const buildLabel = nCheck > 0 && !touched ? `Build anyway (${nCheck} unchecked) →` : 'Build part →';
   const canBuild = !abstain && !!spec && !expired;
   // A merge is waiting (debounce) or in flight: the spec on screen does not hold every typed value yet.

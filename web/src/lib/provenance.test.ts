@@ -40,6 +40,23 @@ describe('provenance helpers', () => {
     expect(rows).toHaveLength(9);
   });
 
+  it('keys rows by the original feature index once a feature was removed', () => {
+    // the server fused [pocket 0, pin 1, pocket 2] and removed index 0: the spec shows [pin, pocket]
+    const after = {
+      ...spec,
+      features: [
+        { type: 'boss', face: 'top', a_mm: 20, b_mm: 55, diameter_mm: 8, height_mm: 6 },
+        { type: 'pocket', face: 'front', a_mm: 7.5, b_mm: 50, width_mm: 15, height_mm: 20, depth_mm: 20 },
+      ],
+      provenance: { ...spec.provenance, 'features[0].diameter_mm': 'scaled', 'features[1].width_mm': 'scaled' },
+    } as unknown as Spec;
+    const rows = featureRows(after, { 'features[0].keep': 0 });
+    const pin = rows.find((r) => r.field === 'diameter_mm')!;
+    expect(pin).toMatchObject({ path: 'features[1].diameter_mm', index: 1, prov: 'scaled' });
+    const pocket = rows.find((r) => r.field === 'width_mm')!;
+    expect(pocket).toMatchObject({ path: 'features[2].width_mm', index: 2, prov: 'scaled' });
+  });
+
   it('counts check groups the way the design does', () => {
     expect(countChecks(spec)).toBe(3);
   });
