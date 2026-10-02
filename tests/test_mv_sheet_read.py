@@ -36,6 +36,7 @@ def test_a_third_angle_sheet_is_read_as_third_angle_with_its_picture_left_out():
     assert (read.naming.projection, read.naming.projection_source) == ("third", "drawing")
     assert read.scale.mm_per_px == pytest.approx(0.25, rel=0.01)
     assert any("left out" in w for w in read.warnings)
+    assert not any("pick the face" in w for w in read.warnings)  # the web app has no face picker
 
 
 def test_a_first_angle_sheet_stays_first_angle():

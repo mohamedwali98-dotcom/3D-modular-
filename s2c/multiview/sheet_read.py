@@ -161,7 +161,8 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
     if all(round_view(ink, v.box) for v, f in zip(views, naming.faces, strict=True) if f not in ("auto", SKIP)):
         return None
     warnings = list(naming.warnings)
-    if any(f == "auto" for f in naming.faces) and not keep_unnamed:
+    if any(f == "auto" for f in naming.faces) and not keep_unnamed:  # no face picker: the view is left out instead
+        warnings = [w for w in warnings if "pick the face by hand" not in w]
         warnings.append("A view that could not be named (an isometric picture, a detail) was left out; it is "
                         "only a picture of the part.")
     ink, bodies = _bodies(sheet, image)
