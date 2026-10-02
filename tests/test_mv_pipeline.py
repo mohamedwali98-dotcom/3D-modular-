@@ -249,3 +249,28 @@ def test_the_bundled_sketch_example_takes_a_one_mm_finish(kind):
     assert len(set(spec.views.front.outer)) <= 8
     finished, _ = apply_geometry(spec, GeometrySettings(finish=kind, finish_mm=1.0))
     assert build(finished).solids().vals()
+
+
+def test_two_fuses_of_one_analysis_never_run_at_once(monkeypatch):
+    """The web job and a merge (or two merges) may fuse the same Observed together: fuse locks it itself."""
+    import threading
+    import time
+    pipe = MvPipeline()
+    observed = pipe.observe([ImageInput(sketch(600, 400), "front", "sketch")])
+    inside, most = [0], [0]
+    real = pipeline.complete
+
+    def slow(*a, **k):
+        inside[0] += 1
+        most[0] = max(most[0], inside[0])
+        time.sleep(0.2)
+        inside[0] -= 1
+        return real(*a, **k)
+    monkeypatch.setattr(pipeline, "complete", slow)
+    sizes = {"envelope.x_mm": 60, "envelope.y_mm": 40, "envelope.z_mm": 5}
+    threads = [threading.Thread(target=pipe.fuse, args=(observed, sizes)) for _ in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert most[0] == 1

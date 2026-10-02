@@ -81,6 +81,8 @@ class Observed:
     mesh: Mesh | None = None
     qwen_cache: dict = field(default_factory=dict)            # (face, seed) -> drawn image, or None after a failure
     filled_by: dict[str, str] = field(default_factory=dict)   # canonical face -> who filled it
+    # fuse fills the caches above and the masks: it holds this while it does, so callers never lock
+    lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
 
 @dataclass
@@ -100,8 +102,9 @@ def forget_images(observed: Observed, res, pipe: MvPipeline | None = None) -> No
     """Raw images are kept only while fuse may still use them: until a spec exists, and only when a helper that
     draws or predicts a missing face from them is on (`pipe.needs_images()`). Merge otherwise needs only the
     silhouettes and the cached mesh."""
-    if not isinstance(res, S.MvAbstain) or (pipe is not None and not pipe.needs_images()):
-        observed.images.clear()
+    with observed.lock:
+        if not isinstance(res, S.MvAbstain) or (pipe is not None and not pipe.needs_images()):
+            observed.images.clear()
 
 
 def input_mask(outline: PixelOutline, edges=()) -> np.ndarray:
@@ -272,6 +275,13 @@ class MvPipeline:
     def fuse(self, observed: Observed, user_values: dict | None = None, accepted=(), rejected=(),
              geometry: GeometrySettings | None = None,
              progress: Progress | None = None) -> S.MultiViewSpec | S.MvAbstain:
+        """The spec from what was observed and the user's values. It fills the Observed's caches (the TripoSR
+        mesh, Qwen-Image's drawings, who filled each face, the masks) under the Observed's own lock: the web job
+        and a merge, or two merges, never fuse the same analysis at once."""
+        with observed.lock:
+            return self._fuse(observed, user_values, accepted, rejected, geometry, progress)
+
+    def _fuse(self, observed: Observed, user_values, accepted, rejected, geometry, progress):
         geometry = geometry or GeometrySettings()
         env_result = fuse_envelope(observed.observations, user_values)
         if isinstance(env_result, S.MvAbstain):
