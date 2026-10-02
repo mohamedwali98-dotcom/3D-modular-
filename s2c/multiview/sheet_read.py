@@ -38,6 +38,8 @@ MARGIN = 0.3         # ...and wins when the other leaves at least this much more
 CLEAN_SHARE = 0.97   # a drawing: this share of its pixels is paper or ink...
 CLEAN_GREY = 40      # ...within this many grey levels of the paper or of the darkest ink...
 CLEAN_SAT = 25       # ...and its paper has no colour cast (mean HSV saturation under this)
+FLAT_GREY = 2        # an image made on a computer: this share of its pixels lies within this many grey levels
+FLAT_SHARE = 0.5     # of its paper (a photo's paper is never this even: under 0.15 on every photo tried)
 SKETCH_SCALE = 0.2   # hand sketches are not drawn to scale: the naming's size check allows this share (spec 3.2)
 SKETCH_ALIGN = 0.2   # ...and hand-placed views line up within this share of their size
 SKETCH_EXTENT = 0.4  # ...sharing an extent within this share
@@ -72,11 +74,28 @@ def _clean(image: np.ndarray) -> bool:
     return True
 
 
-def page_of(image_bgr: np.ndarray) -> Page | S.MvAbstain:
-    """Step 0: a clean drawing is read as drawn; a photo of a sketch goes through the sketch reader's capture (the
-    sheet found, rectified, shadows flattened, ink binarised). A photo it cannot use abstains with its remedy."""
-    image = image_bgr if image_bgr.ndim == 3 else cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
+def _digital(image: np.ndarray) -> bool:
+    """An image made on a computer (an export, a screenshot, a scan): clean, or drawn on one flat paper value,
+    light or dark, with something drawn on it. Shading a picture's faces grey does not make it a photo."""
     if _clean(image):
+        return True
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.int16)
+    values, counts = np.unique(gray, return_counts=True)
+    paper = int(values[counts.argmax()])
+    if np.mean(np.abs(gray - paper) <= FLAT_GREY) < FLAT_SHARE:
+        return False
+    drawn = np.percentile(gray, 99.5 if paper < 128 else 0.5)
+    return abs(float(drawn) - paper) >= 3 * CLEAN_GREY
+
+
+def page_of(image_bgr: np.ndarray) -> Page | S.MvAbstain:
+    """Step 0: a drawing made on a computer is read as drawn (light lines on a dark screen turned dark on light);
+    a photo of a sketch goes through the sketch reader's capture (the sheet found, rectified, shadows flattened, ink
+    binarised). A photo it cannot use abstains with its remedy."""
+    image = image_bgr if image_bgr.ndim == 3 else cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
+    if _digital(image):
+        if np.median(cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)) < 128:
+            image = 255 - image
         ink = ink_mask(image) > 0
         dist = cv2.distanceTransform(ink.astype(np.uint8), cv2.DIST_L2, 3)
         stroke = 2 * float(np.percentile(dist[ink], 75)) if ink.any() else 2.0
@@ -367,21 +386,25 @@ def read_drawing(image_bgr: np.ndarray, projection: str = "auto", reader=None, s
                  keep_unnamed: bool = False) -> SheetRead | S.MvAbstain | None:
     """One image to named views and their numbers (sketch-to-model spec 3): a clean drawing is read exactly as
     `read_sheet` reads it; a photo of a hand sketch becomes a clean page (an abstention when it cannot), its views
-    are its closed outlines, and naming allows for a sketch not drawn to scale. None when no sheet of views is
-    found."""
+    are its closed outlines, and naming allows for a sketch not drawn to scale. An image made on a computer that
+    `read_sheet` finds no sheet in (a sketch scanned black on white) goes through the sketch steps. None when no
+    sheet of views is found."""
     page = page_of(image_bgr)
     if isinstance(page, S.MvAbstain):
         return page
     if page.kind == "drawing":
         read = read_sheet(page.image, projection, reader, service, keep_unnamed)
-    else:
-        sheet = split_by_outlines(page.image, page.stroke_px)
-        if sum(len(d.views) for d in sheet.drawings) < 2:
-            sheet = split_sheet(page.image)
-        if not is_sheet(sheet, SKETCH_ALIGN, SKETCH_EXTENT):
-            return None
-        sheet.stroke_px = page.stroke_px
-        read = _read(sheet, page.image, projection, reader, service, keep_unnamed, SKETCH_SCALE, page.to_photo)
+        if read is not None:
+            read.kind, read.page = page.kind, page
+            return read
+        page = Page(page.image, "sketch", page.to_photo, page.stroke_px)  # a sketch already black on white (a scan)
+    sheet = split_by_outlines(page.image, page.stroke_px)
+    if sum(len(d.views) for d in sheet.drawings) < 2:
+        sheet = split_sheet(page.image)
+    if not is_sheet(sheet, SKETCH_ALIGN, SKETCH_EXTENT):
+        return None
+    sheet.stroke_px = page.stroke_px
+    read = _read(sheet, page.image, projection, reader, service, keep_unnamed, SKETCH_SCALE, page.to_photo)
     if read is not None:
         read.kind, read.page = page.kind, page
     return read

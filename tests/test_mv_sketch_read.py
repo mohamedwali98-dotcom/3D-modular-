@@ -86,6 +86,42 @@ def test_a_clean_drawing_reads_exactly_as_before():
     assert a.scale.mm_per_px == b.scale.mm_per_px
 
 
+def _shaded_picture(img, box):
+    """The sheet with its isometric picture's faces filled grey, as CAD exports often shade it."""
+    x, y, w, h = box
+    shaded = img.copy()
+    ink = (cv2.cvtColor(img[y: y + h, x: x + w], cv2.COLOR_BGR2GRAY) < 128).astype(np.uint8) * 255
+    cv2.floodFill(ink, None, (0, 0), 128)
+    shaded[y: y + h, x: x + w][ink == 0] = (190, 190, 190)
+    return shaded
+
+
+def test_a_cad_sheet_with_a_shaded_picture_is_read_as_a_drawing():
+    """Grey faces on the isometric picture do not make a drawing a photo: it keeps its scale and its names."""
+    img, boxes, words = drawing_sheet(_part(), faces=THIRD, layout="third", iso=True)
+    shaded = _shaded_picture(img, boxes["iso"])
+    a = read_sheet(img, "auto", service=_service(words))
+    b = read_drawing(shaded, "auto", service=_service(words))
+    assert b.kind == "drawing" and [c.face for c in b.crops] == [c.face for c in a.crops]
+    assert b.scale.confirmed and b.scale.mm_per_px == a.scale.mm_per_px
+
+
+def test_a_dark_drawing_is_read_as_a_drawing():
+    """Light lines on a dark screen (a dark-theme screenshot) are a drawing, not a photo taken in poor light."""
+    img, _, words = drawing_sheet(_part(), faces=THIRD, layout="third", iso=True)
+    a = read_sheet(img, "auto", service=_service(words))
+    b = read_drawing(255 - img, "auto", service=_service(words))
+    assert b.kind == "drawing" and [c.face for c in b.crops] == [c.face for c in a.crops]
+
+
+def test_a_scanned_sketch_is_read_as_a_sketch():
+    """A sketch already flattened to black and white (a scanner app) reaches the sketch steps all the same."""
+    scan = page_of(cv2.imread(str(GOLDEN / "real_bracket_1" / "image.jpg"))).image
+    read = read_drawing(scan, "third")
+    assert read.kind == "sketch" and sorted(c.face for c in read.crops) == sorted(THIRD)
+    assert read.scale.mm_per_px is None  # a sketch never gives a scale
+
+
 def test_the_real_sketch_names_its_three_faces():
     """Third-angle set: top, front, right. On auto, the ISO default with the setting as the source is accepted
     when the drawing does not decide (spec 2)."""
