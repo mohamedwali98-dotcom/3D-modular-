@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from s2c.multiview import spec as S
+from s2c.multiview.sheet import split_by_outlines
 from s2c.multiview.sheet_read import page_of
 from tests.hand_views import hand_photo
 from tests.line_views import drawing_sheet
@@ -38,3 +39,32 @@ def test_a_hand_photo_becomes_a_clean_page():
 def test_a_dark_photo_abstains_with_a_remedy():
     page = page_of(np.full((900, 1200, 3), 20, np.uint8))
     assert isinstance(page, S.MvAbstain) and page.remedy
+
+
+def test_views_joined_by_dimension_and_miter_lines_are_three_faces():
+    photo, _ = hand_photo(_part(), faces=THIRD, layout="third", miter=True)
+    page = page_of(photo)
+    sheet = split_by_outlines(page.image, page.stroke_px)
+    big = [v for d in sheet.drawings for v in d.views if v.box[2] * v.box[3] > 0.02 * page.image.size / 3]
+    assert len(big) == 3
+
+
+def test_the_real_sketch_has_three_faces():
+    page = page_of(cv2.imread(str(GOLDEN / "real_bracket_1" / "image.jpg")))
+    sheet = split_by_outlines(page.image, page.stroke_px)
+    area = page.image.shape[0] * page.image.shape[1]
+    big = [v for d in sheet.drawings for v in d.views if v.box[2] * v.box[3] > 0.01 * area]
+    assert len(big) == 3
+
+
+def test_dimension_strips_are_not_part_of_a_face():
+    """A dimension line whose extension lines meet the outline closes a strip onto the view; with its number beside
+    it, the strip is taken off again, so views that share a size have the same box size."""
+    for seed in range(3):
+        photo, _ = hand_photo(_part(), faces=THIRD, layout="third", miter=True, seed=seed)
+        page = page_of(photo)
+        views = [v.box for d in split_by_outlines(page.image, page.stroke_px).drawings for v in d.views]
+        top = min(views, key=lambda b: b[1])
+        front, right = sorted((b for b in views if b != top), key=lambda b: b[0])
+        assert abs(top[2] - front[2]) <= 0.03 * front[2]
+        assert abs(front[3] - right[3]) <= 0.03 * front[3]

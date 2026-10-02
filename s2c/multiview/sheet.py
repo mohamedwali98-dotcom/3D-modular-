@@ -42,6 +42,13 @@ LINE_ART = 0.35         # a view is line art when its ink fills under this share
 SCALE = 0.08            # a name's implied size and the view's size agree within this share (spec 3.2)
 SLACK = 0.004           # ... or within this share of the long side, for thin views and stroke widths
 SPUR = 0.006            # filled rows or columns this thin (share of the long side) are chain lines, not the view
+BODY = 0.01             # a closed outline filling at least this share of the page is a view (sketches)
+MEND = 3.0              # ... after gaps up to this many line widths are closed (a hand corner that does not meet)
+STRIP_REACH = 1.6       # a dimension's number sits within this many text heights of its dimension line
+STRIP_SHARE = 0.2       # erasing a dimension line takes under this share off the view; a real edge opens it all
+STRIP_THIN = 0.5        # a strip is under this share of its length across
+STRIP_TRIES = 8
+TEXT_PAD = 4            # the margin s2c.sketch.text puts around a text box
 MARK_AREA = 0.15        # an unnamed view under this share of the largest view's area is a mark: text, balloon, note
 CROP_MARGIN = 0.04
 RING_DIRECTIONS = 36    # directions around a circle's centre
@@ -95,6 +102,138 @@ def split_sheet(image_bgr: np.ndarray) -> Sheet:
         art = _line_art(comp, ids, box, k, sum(int(count[i]) for i in ids))
         views.append(View(box, _union(b for bs in label for b in bs) if label else None, art))
     return Sheet(_drawings(views, cuts), (h, w), [])
+
+
+def split_by_outlines(image_bgr: np.ndarray, stroke_px: float) -> Sheet:
+    """The views of a sketch page as closed outlines (spec 3.1). Gaps up to about two line widths are mended, the
+    outlines filled, and lines up to that width opened away: dimension, miter and centre lines and text enclose no
+    area, so they never join two views or enlarge one. Every filled blob of at least BODY of the page is a view.
+    A dimension line whose extension lines touch the outline does close a strip onto the view; it is taken off again
+    where its number is written beside it (`_trim_strips`)."""
+    from s2c.sketch.text import find_text_boxes
+
+    ink = ink_mask(image_bgr)
+    h, w = ink.shape
+    _remove_border(ink)
+    k = round(MEND * max(1.0, stroke_px)) | 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    closed = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, kernel)
+    texts = _words(find_text_boxes(ink, stroke_px))
+    bodies = []
+    for body in _bodies(closed, kernel, BODY * h * w):
+        ys, xs = np.nonzero(_trim_strips(closed, body, texts, kernel))
+        bodies.append((int(xs.min()), int(ys.min()), int(np.ptp(xs)) + 1, int(np.ptp(ys)) + 1))
+    if not bodies:
+        return Sheet([], (h, w), ["No closed outline found in the image."])
+    rest = ink.copy()
+    for x, y, bw, bh in bodies:
+        rest[y: y + bh, x: x + bw] = 0
+    pool = dict(enumerate(bodies))
+    labels: dict[int, list[Box]] = {}
+    m, parts = cv2.connectedComponents(rest, connectivity=8)
+    boxes, count = _ink_boxes(rest, parts, m)
+    small = [i for i, b in boxes.items() if b[3] < LABEL_HEIGHT * h and count[i] >= SPECK * h * w]
+    for g in _text_lines(small, boxes):
+        box = _union(boxes[i] for i in g)
+        if box[2] >= LABEL_ASPECT * box[3] and (owner := _label_owner(box, pool)) is not None:
+            labels.setdefault(owner, []).append(box)
+    views = [View(b, _union(labels[i]) if i in labels else None, True) for i, b in pool.items()]
+    return Sheet(_drawings(views, []), (h, w), [])
+
+
+def _bodies(closed: np.ndarray, kernel: np.ndarray, least: float) -> list[np.ndarray]:
+    """The closed ink filled, lines opened away: masks of the blobs of at least `least` px."""
+    solid = cv2.morphologyEx(ndimage.binary_fill_holes(closed > 0).astype(np.uint8), cv2.MORPH_OPEN, kernel)
+    n, comp, stats, _ = cv2.connectedComponentsWithStats(solid, connectivity=8)
+    return [comp == i for i in range(1, n) if stats[i][4] >= least]
+
+
+def _trim_strips(closed: np.ndarray, body: np.ndarray, texts: list[Box], kernel: np.ndarray) -> np.ndarray:
+    """The body without the strips its dimension lines close onto it. An edge of the body's outline with a text
+    box beside it is erased; when that takes off a part of the body (under STRIP_SHARE of it) and the text is not
+    in what stays, the edge was a dimension line. Text inside the part taken off ("60" written between the view and
+    its dimension line) needs that part to be a strip along the edge, so a small pin with a stray mark on it stays.
+    Erasing a real outline edge opens the whole view, which is too much to take off."""
+    k = kernel.shape[0]
+    for _ in range(STRIP_TRIES):
+        ys, xs = np.nonzero(body)
+        x0, y0 = max(0, int(xs.min()) - 2 * k), max(0, int(ys.min()) - 2 * k)
+        x1, y1 = min(body.shape[1], int(xs.max()) + 2 * k + 1), min(body.shape[0], int(ys.max()) + 2 * k + 1)
+        own = body[y0:y1, x0:x1]
+        contours, _ = cv2.findContours(own.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        outer = max(contours, key=cv2.contourArea)
+        poly = cv2.approxPolyDP(outer, k, True)[:, 0]
+        cut = None
+        for p, q in zip(poly, np.roll(poly, -1, axis=0)):
+            beside = [t for t in texts if _beside((t[0] - x0, t[1] - y0, t[2], t[3]), p, q)]
+            if not beside:
+                continue
+            trial = closed[y0:y1, x0:x1].copy()
+            cv2.line(trial, tuple(int(v) for v in p), tuple(int(v) for v in q), 0, k + 2)
+            for tx, ty, tw, th in beside:  # the number goes too: its mended loops would stay stuck to the view
+                trial[max(0, ty - y0 + TEXT_PAD): max(0, ty - y0 + th - TEXT_PAD),
+                      max(0, tx - x0 + TEXT_PAD): max(0, tx - x0 + tw - TEXT_PAD)] = 0
+            parts = _bodies(trial, kernel, 0)
+            stay = max(parts, key=lambda m: int((m & own).sum()), default=None)
+            if stay is None:
+                continue
+            stay = stay & own
+            lost = own & ~stay
+            if not 0 < lost.sum() <= STRIP_SHARE * own.sum():
+                continue
+            for t in beside:
+                tx, ty, tw, th = t[0] - x0, t[1] - y0, t[2], t[3]
+                box = (slice(max(0, ty), max(0, ty + th)), slice(max(0, tx), max(0, tx + tw)))
+                size = max(1, stay[box].size)
+                if stay[box].sum() > 0.3 * size:
+                    continue
+                if lost[box].sum() > 0.5 * size and not _strip(lost, p, q):
+                    continue
+                cut = (trial, stay)
+                break
+            if cut:
+                break
+        if cut is None:
+            return body
+        closed[y0:y1, x0:x1] = cut[0]
+        body = body.copy()
+        body[y0:y1, x0:x1] = cut[1]
+    return body
+
+
+def _words(boxes: list[Box]) -> list[Box]:
+    """Glyph boxes joined into words, along a row or (a number written along a vertical line) a column."""
+    sets = _Sets(range(len(boxes)))
+    for i, j in combinations(range(len(boxes)), 2):
+        a, b = boxes[i], boxes[j]
+        for p, s, o, t in ((0, 2, 1, 3), (1, 3, 0, 2)):  # neighbours along x (overlapping in y), then along y
+            over = min(a[o] + a[t], b[o] + b[t]) - max(a[o], b[o])
+            gap = max(a[p], b[p]) - min(a[p] + a[s], b[p] + b[s])
+            if over >= 0.5 * min(a[t], b[t]) and gap <= 0.6 * max(a[t], b[t]):
+                sets.join(i, j)
+    return [_union(boxes[i] for i in g) for g in sets.groups()]
+
+
+def _beside(t: Box, p: np.ndarray, q: np.ndarray) -> bool:
+    """The text box's centre is within STRIP_REACH text heights of the edge pq, over its span."""
+    tx, ty, tw, th = t
+    along = q.astype(float) - p
+    length = float(np.hypot(*along))
+    if length < min(tw, th):
+        return False
+    u = along / length
+    c = np.array([tx + tw / 2, ty + th / 2]) - p
+    s = float(c @ u)
+    return 0 <= s <= length and abs(float(c[0] * u[1] - c[1] * u[0])) <= STRIP_REACH * min(tw, th)
+
+
+def _strip(lost: np.ndarray, p: np.ndarray, q: np.ndarray) -> bool:
+    """The part taken off is a strip along pq: across it, under STRIP_THIN of its length along it."""
+    ys, xs = np.nonzero(lost)
+    u = (q.astype(float) - p) / max(1e-6, float(np.hypot(*(q.astype(float) - p))))
+    along = xs * u[0] + ys * u[1]
+    across = xs * u[1] - ys * u[0]
+    return float(np.ptp(across)) <= STRIP_THIN * float(np.ptp(along))
 
 
 def is_sheet(sheet: Sheet) -> bool:
