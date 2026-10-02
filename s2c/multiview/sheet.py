@@ -74,6 +74,7 @@ class Sheet:
     drawings: list[Drawing]
     shape: tuple[int, int]
     warnings: list[str] = field(default_factory=list)
+    stroke_px: float | None = None  # a hand sketch's line width: its views are drawn again straight before reading
 
 
 def split_sheet(image_bgr: np.ndarray) -> Sheet:
@@ -169,29 +170,24 @@ def _trim_strips(closed: np.ndarray, body: np.ndarray, texts: list[Box], kernel:
         poly = cv2.approxPolyDP(outer, k, True)[:, 0]
         cut = None
         for p, q in zip(poly, np.roll(poly, -1, axis=0)):
-            beside = [t for t in texts if _beside((t[0] - x0, t[1] - y0, t[2], t[3]), p, q)]
-            if not beside:
-                continue
-            trial = closed[y0:y1, x0:x1].copy()
-            cv2.line(trial, tuple(int(v) for v in p), tuple(int(v) for v in q), 0, k + 2)
-            for tx, ty, tw, th in beside:  # the number goes too: its mended loops would stay stuck to the view
-                trial[max(0, ty - y0 + TEXT_PAD): max(0, ty - y0 + th - TEXT_PAD),
-                      max(0, tx - x0 + TEXT_PAD): max(0, tx - x0 + tw - TEXT_PAD)] = 0
-            parts = _bodies(trial, kernel, 0)
-            stay = max(parts, key=lambda m: int((m & own).sum()), default=None)
-            if stay is None:
-                continue
-            stay = stay & own
-            lost = own & ~stay
-            if not 0 < lost.sum() <= STRIP_SHARE * own.sum():
-                continue
-            for t in beside:
+            for t in texts:  # each number beside the edge on its own: a big "word" of dashes must not open the view
                 tx, ty, tw, th = t[0] - x0, t[1] - y0, t[2], t[3]
+                if not _beside((tx, ty, tw, th), p, q):
+                    continue
+                trial = closed[y0:y1, x0:x1].copy()
+                cv2.line(trial, tuple(int(v) for v in p), tuple(int(v) for v in q), 0, k + 2)
+                trial[max(0, ty + TEXT_PAD): max(0, ty + th - TEXT_PAD),  # the number goes too: its mended
+                      max(0, tx + TEXT_PAD): max(0, tx + tw - TEXT_PAD)] = 0  # loops would stay stuck to the view
+                stay = max(_bodies(trial, kernel, 0), key=lambda m: int((m & own).sum()), default=None)
+                if stay is None:
+                    continue
+                stay = stay & own
+                lost = own & ~stay
+                if not 0 < lost.sum() <= STRIP_SHARE * own.sum():
+                    continue
                 box = (slice(max(0, ty), max(0, ty + th)), slice(max(0, tx), max(0, tx + tw)))
                 size = max(1, stay[box].size)
-                if stay[box].sum() > 0.3 * size:
-                    continue
-                if lost[box].sum() > 0.5 * size and not _strip(lost, p, q):
+                if stay[box].sum() > 0.3 * size or (lost[box].sum() > 0.5 * size and not _strip(lost, p, q)):
                     continue
                 cut = (trial, stay)
                 break

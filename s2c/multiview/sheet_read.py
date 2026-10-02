@@ -41,6 +41,10 @@ CLEAN_SAT = 25       # ...and its paper has no colour cast (mean HSV saturation 
 SKETCH_SCALE = 0.2   # hand sketches are not drawn to scale: the naming's size check allows this share (spec 3.2)
 SKETCH_ALIGN = 0.2   # ...and hand-placed views line up within this share of their size
 SKETCH_EXTENT = 0.4  # ...sharing an extent within this share
+TURN_MAX = 6.0       # a sketch view turned by up to this many degrees is turned back square
+SNAP = 5.0           # a fitted line within this many degrees of the axes is drawn exactly along them
+FIT_COVER = 0.8      # the fitted lines and circles cover this share of a view's ink, or it is kept as drawn
+DASH = 6.0           # a line shorter than this many line widths may be a dash of a hidden line
 
 
 @dataclass
@@ -129,8 +133,141 @@ def _crops(sheet: Sheet, image: np.ndarray, naming: Naming, keep_unnamed: bool =
         body = image[y: y + h, x: x + w].copy()
         body[(ink[y: y + h, x: x + w] == 0) | ~keep] = 255
         crop[m: m + h, m: m + w] = body
+        if sheet.stroke_px:
+            crop = _straighten(crop, sheet.stroke_px)
         out.append(SheetCrop(i, cv2.imencode(".png", crop)[1].tobytes(), face, (x - m, y - m), max(crop.shape[:2])))
     return out
+
+
+def _straighten(crop: np.ndarray, stroke: float) -> np.ndarray:
+    """A sketch view drawn again from the lines, circles, arcs and curves fitted to its strokes (spec 3.3): turned
+    back square by its lines' median slant, lines near the axes drawn exactly along them with their ends on the
+    lines they nearly meet (a hand corner that stops short or overshoots closes exactly), circles round, arcs and curves as drawn. Kept as drawn when
+    the fit covers under FIT_COVER of its ink (hatching, lettering, a shaded view)."""
+    from s2c.sketch.vectorize import vectorize
+    ink = (cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) < 128).astype(np.uint8) * 255
+    prims = vectorize(ink, stroke, "view")
+    if not prims or not ink.any():
+        return crop
+    width = max(1, round(float(np.median([p.width for p in prims]))))
+    reach = np.zeros_like(ink)
+    for p in prims:
+        cv2.polylines(reach, [p.pts.round().astype(np.int32)], False, 255, width + 2 * max(2, round(stroke)))
+    if np.count_nonzero(reach & ink) < FIT_COVER * np.count_nonzero(ink):
+        return crop
+    slants = [(_slant(p.p1 - p.p0), p.length) for p in prims if p.kind == "line"]
+    slants = sorted((a, n) for a, n in slants if abs(a) <= TURN_MAX)
+    turn = 0.0
+    if slants:
+        weights = np.cumsum([n for _, n in slants])
+        turn = slants[int(np.searchsorted(weights, weights[-1] / 2))][0]
+    h, w = ink.shape
+    pad = round(0.05 * max(h, w))
+    rot = cv2.getRotationMatrix2D((w / 2, h / 2), turn, 1.0)
+    rot[:, 2] += pad
+    out = np.zeros((h + 2 * pad, w + 2 * pad), np.uint8)
+    square = []  # (axis, position across, start, end, a dash?) of the lines near the axes
+    for p in prims:
+        pts = cv2.transform(p.pts[None].astype(np.float64), rot)[0]
+        if p.kind == "circle":
+            c = cv2.transform(np.array([[p.center]], np.float64), rot)[0, 0]
+            cv2.circle(out, (round(c[0]), round(c[1])), round(p.radius), 255, width)
+        elif p.kind == "line" and (abs(_slant(pts[1] - pts[0])) <= SNAP or (
+                p.length < DASH * stroke and min(np.abs(pts[1] - pts[0])) <= stroke)):  # a dash's slant is noise
+            (x0, y0), (x1, y1) = pts
+            if abs(x1 - x0) >= abs(y1 - y0):
+                square.append(["h", (y0 + y1) / 2, min(x0, x1), max(x0, x1)])
+            else:
+                square.append(["v", (x0 + x1) / 2, min(y0, y1), max(y0, y1)])
+        else:
+            cv2.polylines(out, [pts.round().astype(np.int32)], False, 255, width)
+    for axis in "hv":  # the pieces of one edge (split at junctions, or dashes) share its position: no 1 px steps
+        line = sorted((sq for sq in square if sq[0] == axis), key=lambda sq: sq[1])
+        groups, group = [], []
+        for sq in line:
+            if group and sq[1] - group[0][1] > 2 * stroke:
+                groups.append(group)
+                group = []
+            group.append(sq)
+        for run in groups + [group]:
+            at = float(np.average([sq[1] for sq in run], weights=[sq[3] - sq[2] + 1 for sq in run]))
+            for sq in run:
+                sq[1] = at
+    square = _join(square, stroke)
+    reach = 2 * stroke
+    solid = [sq for sq in square if not sq[4]]
+
+    def meets(axis, at, e, near=reach):
+        """The line across (axis, at) that the end e nearly meets, or None."""
+        across = [t[1] for t in solid if t[0] != axis and t[2] - reach <= at <= t[3] + reach]
+        return min((t for t in across if abs(t - e) <= near), key=lambda t: abs(t - e), default=None)
+
+    for axis, at, lo, hi, dash in solid:  # each end on the line it nearly meets: a hand corner closes exactly
+        lo, hi = (e if t is None else t for e, t in ((lo, meets(axis, at, lo)), (hi, meets(axis, at, hi))))
+        _segment(out, axis, at, lo, hi, width)
+    run_reach = DASH * stroke  # a hidden line's first dash often runs into the outline: a dash and a gap short
+    for axis, at, lo, hi in _dash_runs([sq for sq in square if sq[4]], stroke):
+        _hidden(out, axis, at, lo, meets(axis, at, lo, run_reach), hi, meets(axis, at, hi, run_reach), width)
+    return cv2.cvtColor(255 - out, cv2.COLOR_GRAY2BGR)
+
+
+def _join(square: list, stroke: float) -> list:
+    """The pieces of one line that meet joined (a skeleton splits a line where another meets it), each marked as
+    a possible dash when what stays is short: [axis, position, start, end, dash?]."""
+    out = []
+    for sq in sorted(square, key=lambda sq: (sq[0], sq[1], sq[2])):
+        last = out[-1] if out else None
+        if last and last[0] == sq[0] and last[1] == sq[1] and sq[2] - last[3] <= max(2.0, 0.6 * stroke):
+            last[3] = max(last[3], sq[3])
+        else:
+            out.append(list(sq))
+    return [sq + [sq[3] - sq[2] < DASH * stroke] for sq in out]
+
+
+def _segment(out: np.ndarray, axis: str, at: float, lo: float, hi: float, width: int) -> None:
+    ends = [(lo, at), (hi, at)] if axis == "h" else [(at, lo), (at, hi)]
+    cv2.line(out, *(tuple(round(v) for v in e) for e in ends), 255, width)
+
+
+def _dash_runs(dashes: list, stroke: float) -> list[tuple[str, float, float, float]]:
+    """Dashes on one line with gaps under three line widths: the hidden lines, (axis, position, start, end)."""
+    runs = []
+    for axis in "hv":
+        line = sorted((d for d in dashes if d[0] == axis), key=lambda d: (d[1], d[2]))
+        run = []
+        for d in line:
+            if run and (d[1] != run[-1][1] or d[2] - run[-1][3] > 3 * stroke):
+                runs.append(run)
+                run = []
+            run.append(d)
+        runs += [run] if run else []
+    return [(r[0][0], r[0][1], r[0][2], r[-1][3]) for r in runs]
+
+
+def _hidden(out: np.ndarray, axis: str, at: float, lo: float, lo_line: float | None, hi: float,
+            hi_line: float | None, width: int) -> None:
+    """A hidden line drawn again as even dashes. An end on an outline starts a clear gap from it (the dash must
+    not join the outline, or it is not seen as a dash); a free end stays where it was drawn."""
+    dash, gap = 4 * width, 2 * width
+    if lo_line is not None:
+        lo = lo_line + width / 2 + gap
+    if hi_line is not None:
+        hi = hi_line - width / 2 - gap
+    n = max(1, round((hi - lo + gap) / (dash + gap)))
+    dash = (hi - lo - (n - 1) * gap) / n
+    if dash < 2 * width:  # too short for a dash pattern: one stroke as drawn
+        _segment(out, axis, at, lo, hi, width)
+        return
+    half = width / 2
+    for k in range(n):
+        a = lo + k * (dash + gap)
+        x0, y0, x1, y1 = (a, at - half, a + dash, at + half) if axis == "h" else (at - half, a, at + half, a + dash)
+        cv2.rectangle(out, (round(x0), round(y0)), (round(x1), round(y1)), 255, cv2.FILLED)
+
+
+def _slant(d: np.ndarray) -> float:
+    """A direction's angle from the nearest axis, in degrees, in (-45, 45]."""
+    return float((np.degrees(np.arctan2(d[1], d[0])) + 45) % 90 - 45)
 
 
 def part_bodies(sheet: Sheet, image: np.ndarray, naming: Naming):
@@ -237,6 +374,7 @@ def read_drawing(image_bgr: np.ndarray, projection: str = "auto", reader=None, s
             sheet = split_sheet(page.image)
         if not is_sheet(sheet, SKETCH_ALIGN, SKETCH_EXTENT):
             return None
+        sheet.stroke_px = page.stroke_px
         read = _read(sheet, page.image, projection, reader, service, keep_unnamed, SKETCH_SCALE)
     if read is not None:
         read.kind, read.page = page.kind, page

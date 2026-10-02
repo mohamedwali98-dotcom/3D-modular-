@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 from s2c.multiview import spec as S
+from s2c.multiview.pipeline import MvPipeline
 from s2c.multiview.sheet import split_by_outlines
 from s2c.multiview.sheet_read import page_of, read_drawing, read_sheet
 from tests.hand_views import hand_photo
@@ -95,3 +96,23 @@ def test_the_real_sketch_names_its_three_faces():
     faces = sorted(auto.naming.faces)
     assert faces == sorted(THIRD) or (faces == sorted(("bottom", "front", "left"))
                                       and auto.naming.projection_source == "setting")
+
+
+def test_a_wobbly_notched_block_reads_its_notch():
+    part = _cut(_block(), 0, 40, 50, 15, 60, 70)
+    for seed in range(3):  # three photos: wobble, slant and the dash pattern differ
+        photo, _ = hand_photo(part, faces=THIRD, layout="third", seed=seed)
+        read = read_drawing(photo, "third")
+        pipe = MvPipeline()
+        spec = pipe.fuse(pipe.observe(read.inputs()), {"envelope.x_mm": 80, "envelope.y_mm": 60, "envelope.z_mm": 70})
+        pockets = [f for f in spec.features if f.type == "pocket"]
+        assert len(pockets) == 1 and abs(pockets[0].depth_mm - 20) <= 2, seed
+
+
+def test_straightening_keeps_a_hole_round():
+    part = _block().faces(">Z").workplane(centerOption="CenterOfBoundBox").hole(12)
+    photo, _ = hand_photo(part, faces=THIRD, layout="third")
+    read = read_drawing(photo, "third")
+    obs = MvPipeline().observe(read.inputs())
+    front = next(o for o in obs.observations if o.face == "front")
+    assert len(front.outline.circles) == 1
