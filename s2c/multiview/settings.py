@@ -40,11 +40,13 @@ class _Model(BaseModel):
 
 
 class AiSettings(_Model):
+    """The AI helpers. Qwen-Image (and its sketch rescue), TripoSR and Solaria send the user's images to hosted
+    services, so they are off until the user turns them on. The reader uses the vision model the operator set."""
     use_reader: bool = True
-    use_qwen_image: bool = True
-    use_rescue: bool = True
-    use_triposr: bool = True
-    use_solaria: bool = True
+    use_qwen_image: bool = False
+    use_rescue: bool = False
+    use_triposr: bool = False
+    use_solaria: bool = False
     seed: int = Field(7, ge=0, le=2**31 - 1)
     randomize_seed: bool = False
     attempts: int = Field(2, ge=1, le=4)

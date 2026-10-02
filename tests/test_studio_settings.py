@@ -106,6 +106,6 @@ def test_run_log_is_binary(tmp_path):
 def test_settings_defaults():
     ai = AiSettings()
     assert (ai.use_reader, ai.use_qwen_image, ai.use_rescue, ai.use_triposr, ai.use_solaria, ai.randomize_seed) == \
-        (True, True, True, True, True, False)
+        (True, False, False, False, False, False)  # hosted image services are opt-in
     geo = GeometrySettings()
     assert (geo.snap, geo.finish, geo.finish_edges, geo.clearance) == (True, "none", "all_vertical", "medium")

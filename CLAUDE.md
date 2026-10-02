@@ -81,7 +81,7 @@ One OpenAI-compatible client. Configure with `VLM_BASE_URL`, `VLM_MODEL`, `VLM_A
 
 ## Responsible AI positions (say these in the demo)
 
-- Images live only for the request, plus one silhouette in a temp dir for one hour.
+- Images stay on the server unless the user turns on a hosted helper (Qwen-Image, TripoSR's Space, Solaria; all off by default) or the operator configures a hosted vision model. Analyses stay in memory for an hour after their last use.
 - The user reviews and edits every number before export.
 - No code execution path exists from model output.
 - Full disclosure of models, providers, latency and cost per request.

@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import type { Analysis, ModelResult, Spec } from '../api/types';
-import { initialState, reducer, type CaptureItem, type State } from './store';
+import { initialAi, initialState, reducer, type CaptureItem, type State } from './store';
 
 const item = (id: string, face: CaptureItem['face'] = 'front'): CaptureItem =>
   ({ id, file: new Blob() as File, url: `blob:${id}`, face, kind: 'sketch' });
 const analysis = (request_id: string): Analysis => ({ request_id, spec: null, abstain: null, filled_by: {} });
 
 describe('store', () => {
+  it('sends no image to a hosted service until the user turns one on', () => {
+    expect(initialAi).toMatchObject({ use_qwen_image: false, use_rescue: false, use_triposr: false, use_solaria: false });
+  });
   it('freezes the images a job was started with', () => {
     let s: State = { ...initialState, items: [item('a'), item('b', 'top')] };
     s = reducer(s, { type: 'START_JOB', jobId: 'j1' });

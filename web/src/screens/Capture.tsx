@@ -295,10 +295,10 @@ export function Capture() {
             {aiOpen && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <Toggle label="Read handwriting with the vision model" checked={state.ai.use_reader} onChange={(v) => setAi({ use_reader: v })} />
-                <Toggle label="Draw missing faces with Qwen-Image" checked={state.ai.use_qwen_image} onChange={(v) => setAi({ use_qwen_image: v })} />
-                <Toggle label="Rescue sketches with an open outline" checked={state.ai.use_rescue} onChange={(v) => setAi({ use_rescue: v })} />
-                <Toggle label="TripoSR fallback for missing faces" checked={state.ai.use_triposr} onChange={(v) => setAi({ use_triposr: v })} />
-                <Toggle label="Hole depth from photos (Solaria)" hint="Photos only; adds 60–180 s" checked={state.ai.use_solaria} onChange={(v) => setAi({ use_solaria: v })} />
+                <Toggle label="Draw missing faces with Qwen-Image" hint="Sends your images to a hosted service" checked={state.ai.use_qwen_image} onChange={(v) => setAi({ use_qwen_image: v })} />
+                <Toggle label="Rescue sketches with an open outline" hint="Sends your images to a hosted service (Qwen-Image)" checked={state.ai.use_rescue} onChange={(v) => setAi({ use_rescue: v })} />
+                <Toggle label="TripoSR fallback for missing faces" hint="Sends your images to a hosted service when no local GPU runs it" checked={state.ai.use_triposr} onChange={(v) => setAi({ use_triposr: v })} />
+                <Toggle label="Hole depth from photos (Solaria)" hint="Photos only; adds 60–180 s. Sends your images to a hosted service" checked={state.ai.use_solaria} onChange={(v) => setAi({ use_solaria: v })} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--muted)', flex: 1 }}>
                     Seed

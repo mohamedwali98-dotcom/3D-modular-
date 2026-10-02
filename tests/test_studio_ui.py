@@ -212,7 +212,7 @@ def test_redraw_moves_to_new_seeds(tmp_path, monkeypatch):
     gen = fake_gen(np.zeros((300, 300, 3), np.uint8))
     studio = Studio(MvPipeline(image_gen=gen), root=tmp_path / "files")
     sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
-    review = studio.analyze(sid, "none", AiSettings(seed=10, attempts=1))
+    review = studio.analyze(sid, "none", AiSettings(use_qwen_image=True, seed=10, attempts=1))
     studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
     seeds_before = {c[2] for c in gen.calls}
     studio.redraw(sid)
@@ -226,7 +226,7 @@ def test_redraw_draws_a_random_seed_when_asked(tmp_path, monkeypatch):
     gen = fake_gen(np.zeros((300, 300, 3), np.uint8))
     studio = Studio(MvPipeline(image_gen=gen), root=tmp_path / "files")
     sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
-    review = studio.analyze(sid, "none", AiSettings(seed=10, attempts=1, randomize_seed=True))
+    review = studio.analyze(sid, "none", AiSettings(use_qwen_image=True, seed=10, attempts=1, randomize_seed=True))
     studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
     assert {c[2] for c in gen.calls} == {100}
     review = studio.redraw(sid)

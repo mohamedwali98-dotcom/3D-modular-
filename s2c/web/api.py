@@ -175,14 +175,15 @@ def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None
         if _pixels(data) > MAX_PIXELS:
             raise HTTPException(413, TOO_MANY_PIXELS)
         datas.append(upright(data))
+    settings = AiSettings()  # no settings sent: the defaults, so no image goes to a hosted service unasked
     if ai:
         try:
             settings = AiSettings(**json.loads(ai))
         except (ValueError, TypeError) as e:
             raise HTTPException(400, "The AI settings are not valid.") from e
-        if settings.randomize_seed:
-            settings = settings.model_copy(update={"seed": secrets.randbelow(2**31)})
-        pipe = pipe.configured(settings)
+    if settings.randomize_seed:
+        settings = settings.model_copy(update={"seed": secrets.randbelow(2**31)})
+    pipe = pipe.configured(settings)
     if mode == "sheet":
         job = jobs.new_sheet_job(pipe)
         if not jobs.start_sheet(job, pipe, ImageInput(datas[0]), projection):

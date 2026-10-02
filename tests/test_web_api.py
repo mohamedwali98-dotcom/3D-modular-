@@ -524,3 +524,12 @@ def test_a_crash_in_the_drawing_reader_fails_the_job_instead_of_switching_reader
     monkeypatch.setattr(jobs, "_sheet_reading", lambda data: called.append(data))
     job = _sheet_job()
     assert job["status"] == "failed" and job["error"] == jobs.FAILED and not called
+
+
+def test_without_ai_settings_no_image_goes_to_a_hosted_service():
+    """Qwen-Image, its sketch rescue, TripoSR and Solaria send the user's images to hosted services: off unless the
+    user turns them on (audit H5)."""
+    from s2c.web import jobs
+    job = analyze()
+    pipe = jobs.get_job(job["job_id"]).pipe
+    assert not pipe.draw_faces and not pipe.rescue_enabled and pipe.mesh_provider is None and pipe.depth is None

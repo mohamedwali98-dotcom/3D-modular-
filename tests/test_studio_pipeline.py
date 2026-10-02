@@ -30,7 +30,7 @@ def test_configured_switches_are_per_request():
 
 def test_the_seed_and_attempts_reach_qwen_image():
     gen = fake_gen(np.zeros((300, 300, 3), np.uint8))  # an empty drawing: rejected, so every attempt is used
-    pipe = MvPipeline(image_gen=gen).configured(AiSettings(seed=42, attempts=2))
+    pipe = MvPipeline(image_gen=gen).configured(AiSettings(use_qwen_image=True, seed=42, attempts=2))
     observed = pipe.observe([ImageInput(sketch(600, 400), "front", "sketch")])
     pipe.fuse(observed, {"envelope.x_mm": 60, "envelope.y_mm": 40, "envelope.z_mm": 10})
     assert [c[2] for c in gen.calls] == [42, 43, 42, 43]

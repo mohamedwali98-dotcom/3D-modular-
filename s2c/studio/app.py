@@ -100,15 +100,17 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
                         with gr.Accordion("Reading & AI", open=False):
                             use_reader = gr.Checkbox(True, label="Read handwriting with Qwen-VL",
                                                      info="Off: TrOCR only", interactive=status["Qwen-VL"])
-                            use_qwen = gr.Checkbox(True, label="Draw missing faces with Qwen-Image",
-                                                   interactive=status["Qwen-Image"])
-                            use_rescue = gr.Checkbox(True, label="Rescue sketches with an open outline",
-                                                     info="The redraw is marked 'cleaned'",
+                            ai = AiSettings()  # hosted image services start off: the user opts in
+                            use_qwen = gr.Checkbox(ai.use_qwen_image, label="Draw missing faces with Qwen-Image",
+                                                   info="Sends your images to a hosted service", interactive=status["Qwen-Image"])
+                            use_rescue = gr.Checkbox(ai.use_rescue, label="Rescue sketches with an open outline",
+                                                     info="The redraw is marked 'cleaned'. Sends your images to a hosted service",
                                                      interactive=status["Qwen-Image"])
-                            use_triposr = gr.Checkbox(True, label="TripoSR fallback for missing faces",
+                            use_triposr = gr.Checkbox(ai.use_triposr, label="TripoSR fallback for missing faces",
+                                                      info="Sends your images to a hosted service when no local GPU runs it",
                                                       interactive=status["TripoSR"])
-                            use_solaria = gr.Checkbox(True, label="Hole depth from photos (Solaria)",
-                                                      info="Photos only; adds 60–180 s",
+                            use_solaria = gr.Checkbox(ai.use_solaria, label="Hole depth from photos (Solaria)",
+                                                      info="Photos only; adds 60–180 s. Sends your images to a hosted service",
                                                       interactive=status["Solaria"])
                             seed = gr.Number(7, precision=0, minimum=0, maximum=2**31 - 1, label="Seed",
                                              info="Same seed, same drawing")

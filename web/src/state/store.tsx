@@ -58,7 +58,8 @@ export type Action =
 export const MAX_ITEMS = 6;
 
 export const initialAi: AiSettings = {
-  use_reader: true, use_qwen_image: true, use_rescue: true, use_triposr: true, use_solaria: true,
+  // Qwen-Image, its rescue, TripoSR and Solaria send the images to hosted services: off until the user opts in.
+  use_reader: true, use_qwen_image: false, use_rescue: false, use_triposr: false, use_solaria: false,
   seed: 7, randomize_seed: false, attempts: 2,
 };
 
