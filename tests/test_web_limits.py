@@ -75,3 +75,33 @@ def test_the_cap_is_s2c_max_pixels_from_the_environment_or_dot_env(tmp_path):
     (tmp_path / ".env").write_text("S2C_MAX_PIXELS=1000\n", encoding="utf-8")
     code = "import os, s2c; print(s2c.MAX_PIXELS, os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'])"
     assert _python(code, cwd=tmp_path, OPENCV_IO_MAX_IMAGE_PIXELS="999999999999").stdout.split() == ["1000", "1000"]
+
+
+def test_the_pipeline_is_built_once_however_many_requests_race(monkeypatch):
+    """Two first requests at once must not load two copies of the models."""
+    import threading
+    import time
+    built = []
+
+    def slow_build():
+        time.sleep(0.2)
+        built.append(1)
+        return MvPipeline()
+    monkeypatch.setattr(api, "_PIPELINE", None)
+    monkeypatch.setattr(api, "default_pipeline", slow_build)
+    threads = [threading.Thread(target=api.get_pipeline) for _ in range(6)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert built == [1]
+
+
+def test_the_sweep_runs_at_most_once_a_minute(monkeypatch):
+    """Polling a job every 400 ms must not scan the job registry and the parts folder each time."""
+    sweeps = []
+    monkeypatch.setattr(api.jobs, "sweep_jobs", lambda ttl: sweeps.append(ttl))
+    monkeypatch.setattr(api, "_last_sweep", None)
+    for _ in range(5):
+        c.get("/api/status")
+    assert len(sweeps) == 1

@@ -29,6 +29,16 @@ def _no_qwen_warmup(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _sweep_on_the_next_request():
+    """The /api sweep runs at most once a minute: every test starts as if none had run yet."""
+    import sys
+    api = sys.modules.get("s2c.web.api")
+    if api is not None:
+        api._last_sweep = None
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _fresh_rate_limits():
     """The /api rate limits count per process: every test starts with an empty window."""
     from s2c.web.guard import LIMITER

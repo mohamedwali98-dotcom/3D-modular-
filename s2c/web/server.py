@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -11,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from s2c.web.api import install_error_handlers
+from s2c.web.api import get_pipeline, install_error_handlers
 from s2c.web.api import router as api_router
 from s2c.web.guard import access_token, install_guards
 
@@ -22,7 +23,15 @@ DIST = Path(__file__).resolve().parents[2] / "web" / "dist"
 ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 ORIGINS += [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
-app = FastAPI(title="Sketch-to-CAD")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    get_pipeline()  # the models load at startup, not on the first request
+    yield
+
+
+app = FastAPI(title="Sketch-to-CAD", lifespan=lifespan)
 install_error_handlers(app)
 install_guards(app)
 # Added last, so it wraps the others: the guard's 401 and the body limit's 413 carry CORS headers too.

@@ -8,7 +8,8 @@ import logging
 import os
 import re
 import secrets
-from functools import lru_cache
+import threading
+import time
 from http import HTTPStatus
 from pathlib import Path
 from typing import Annotated, Literal
@@ -51,12 +52,30 @@ SENTENCES = {400: "The request was not accepted.", 404: "Not found.", 405: "That
              422: "The request is not valid. Check the values and try again.", 429: BUSY}
 
 
-@lru_cache(maxsize=1)
+SWEEP_EVERY_S = 60.0
+_PIPELINE: MvPipeline | None = None
+_PIPELINE_LOCK = threading.Lock()
+_last_sweep: float | None = None  # when the last sweep ran (monotonic); None: never
+
+
 def get_pipeline() -> MvPipeline:
-    return default_pipeline()
+    """The process's one pipeline, built on first use (the server builds it at startup) under a lock: two first
+    requests at once never load two copies of the models."""
+    global _PIPELINE
+    if _PIPELINE is None:
+        with _PIPELINE_LOCK:
+            if _PIPELINE is None:
+                _PIPELINE = default_pipeline()
+    return _PIPELINE
 
 
 def _sweep() -> None:
+    """Old jobs and part folders go at most once a minute, so a status poll stays a lookup."""
+    global _last_sweep
+    now = time.monotonic()
+    if _last_sweep is not None and now - _last_sweep < SWEEP_EVERY_S:
+        return
+    _last_sweep = now
     jobs.sweep_jobs(jobs.TTL_S)
     sweep(ARTIFACT_ROOT)
 
