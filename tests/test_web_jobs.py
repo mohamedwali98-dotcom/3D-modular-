@@ -37,7 +37,7 @@ def test_a_job_past_its_budget_stops_with_a_plain_message(monkeypatch):
     from s2c.multiview.pipeline import ImageInput
     png = (Path(__file__).resolve().parents[1] / "examples" / "mv" / "sketches" / "front.png").read_bytes()
     monkeypatch.setattr(jobs, "JOBS", {})
-    monkeypatch.setattr(jobs, "JOB_BUDGET_S", 0)
+    monkeypatch.setattr(jobs, "JOB_BUDGET_S", -1)  # past it at once, whatever the clock resolution
     job = jobs.new_job(1, MvPipeline())
     jobs.run(job, MvPipeline(), [ImageInput(png, "front", "sketch")], None)
     assert job.status == "failed" and job.error == jobs.TOO_LONG
@@ -84,7 +84,7 @@ def test_a_request_turned_away_evicts_nothing(monkeypatch):
 def test_the_budget_stops_a_job_before_a_stage_never_after_one(monkeypatch):
     """A stage that finished keeps its result: past the budget, the job stops before the next one starts."""
     import pytest
-    monkeypatch.setattr(jobs, "JOB_BUDGET_S", 0)
+    monkeypatch.setattr(jobs, "JOB_BUDGET_S", -1)  # past it at once, whatever the clock resolution
     job = jobs.new_job(1, MvPipeline(), register=False)
     jobs._check(job, {"key": "fuse", "state": "done"})
     with pytest.raises(jobs.JobTimeout):
