@@ -295,3 +295,15 @@ def test_a_sketchs_faces_go_in_as_lines_with_their_numbers_read_once(tmp_path, m
     assert len(observed.observations) == 3
     assert all(not o.values for o in observed.observations)
     assert all(o.outline.line_art and not o.outline.inner for o in observed.observations)
+
+
+def test_an_image_with_too_many_pixels_gets_a_card_not_a_crash(studio, tmp_path):
+    """OpenCV refuses to decode past the pixel cap (s2c/__init__.py): the Studio says so instead of failing every
+    Analyze after it."""
+    from PIL import Image
+    big = tmp_path / "big.png"
+    Image.new("L", (8000, 6000)).save(big)  # 48 MP of black
+    sid = studio.store.new()
+    studio.add_images(sid, [str(big)])
+    review = studio.analyze(sid, "none", AiSettings())
+    assert not review.ok and review.stage == "capture" and "megapixels" in review.message_html

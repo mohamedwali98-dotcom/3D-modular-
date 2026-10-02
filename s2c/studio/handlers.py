@@ -16,6 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from s2c import MAX_PIXELS
 from s2c.multiview import spec as S
 from s2c.multiview.artifacts import ROOT, build_part, bundle, export_part, sweep
 from s2c.multiview.finish import largest_finish
@@ -135,12 +136,20 @@ def _reason_words(reason: str) -> str:
     return _REASON_WORDS.get(reason, reason.replace("_", " ").capitalize())
 
 
+def _decode(data: np.ndarray) -> np.ndarray | None:
+    """The image, or None when it is not one or has more pixels than OpenCV may decode (s2c/__init__.py)."""
+    try:
+        return cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
+    except cv2.error:
+        return None
+
+
 def _read_image(path) -> np.ndarray | None:
     try:
         data = np.fromfile(str(path), np.uint8)
     except OSError:
         return None
-    return cv2.imdecode(data, cv2.IMREAD_COLOR) if data.size else None
+    return _decode(data)
 
 
 def _sheet_notes(session) -> list[str]:
@@ -333,9 +342,9 @@ class Studio:
             except OSError:
                 missing = card("Image missing", f"{item.name} is no longer available. Add it again.", "stop")
                 return Review(False, "capture", missing)
-            if cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR) is None:
-                bad = card("Image not readable", f"{item.name} is not an image we can read. Upload a JPEG or PNG.",
-                          "stop")
+            if _decode(np.frombuffer(data, np.uint8)) is None:
+                bad = card("Image not readable", f"{item.name} is not an image we can read, or it has more than "
+                           f"{MAX_PIXELS // 1_000_000} megapixels. Upload a JPEG or PNG, smaller if needed.", "stop")
                 return Review(False, "capture", bad)
             images.append(ImageInput(data, None if item.face == "auto" else item.face,
                                      None if item.kind == "auto" else item.kind, mm_per_px=item.mm_per_px,
