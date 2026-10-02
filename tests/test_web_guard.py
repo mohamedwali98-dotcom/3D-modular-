@@ -78,3 +78,13 @@ def test_a_json_body_over_the_limit_is_refused():
     body = b'{"spec": "' + b"x" * (3 * 1024 * 1024) + b'"}'
     r = client().post("/api/model", content=body, headers={"Content-Type": "application/json"})
     assert r.status_code == 413
+
+
+def test_the_perimeters_own_refusals_carry_cors_headers():
+    """A web app on an allowed origin can read why it was refused (401 from the guard, 413 from the body limit)."""
+    origin = {"Origin": "http://localhost:5173"}
+    r = client(REMOTE).post("/api/merge", json=UNKNOWN_JOB, headers=origin)
+    assert r.status_code == 401 and r.headers.get("access-control-allow-origin") == origin["Origin"]
+    big = b'{"spec": "' + b"x" * (3 * 1024 * 1024) + b'"}'
+    r = client().post("/api/model", content=big, headers={**origin, "Content-Type": "application/json"})
+    assert r.status_code == 413 and r.headers.get("access-control-allow-origin") == origin["Origin"]

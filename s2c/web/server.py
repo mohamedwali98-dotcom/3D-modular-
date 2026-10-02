@@ -23,9 +23,10 @@ ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 ORIGINS += [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 app = FastAPI(title="Sketch-to-CAD")
-app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_methods=["*"], allow_headers=["*"])
 install_error_handlers(app)
 install_guards(app)
+# Added last, so it wraps the others: the guard's 401 and the body limit's 413 carry CORS headers too.
+app.add_middleware(CORSMiddleware, allow_origins=ORIGINS, allow_methods=["*"], allow_headers=["*"])
 app.include_router(api_router)
 if (DIST / "index.html").is_file():
     app.mount("/", StaticFiles(directory=DIST, html=True), name="web")
