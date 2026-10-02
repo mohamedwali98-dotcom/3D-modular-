@@ -32,6 +32,8 @@ ALL_STAGE_KEYS = frozenset({*STAGES, *SHEET_STAGES})
 SHEET_UNAVAILABLE = ("Sheet reading is not available yet. Use per-face photos, or try again once "
                      "it is deployed.")
 MAX_RUNNING = 3   # analyses running at once; past this /api/analyze answers 429
+JOB_BUDGET_S = 900  # an analysis still running after this stops at its next stage
+TOO_LONG = "The analysis took too long. Try again with fewer images, or with the AI helpers off."
 MAX_JOBS = 200    # jobs kept in memory; the least recently used finished ones go first
 DRAW_TOOLS = {"qwen-image": ("Qwen-Image", True), "triposr": ("TripoSR", True), "mirrored": ("mirror", False),
               "assumed": ("assumed", False)}
@@ -41,6 +43,10 @@ FAILED = "Analysis failed. Try again or use different photos."
 
 
 class JobCancelled(Exception):
+    pass
+
+
+class JobTimeout(Exception):
     pass
 
 
@@ -290,10 +296,26 @@ def _finish(job: Job, res, filled_by: dict) -> None:
         job.status = "done"
 
 
+def _check(job: Job) -> None:
+    """Called at every progress event: a cancelled job or one past its time budget stops here."""
+    if job.cancel:
+        raise JobCancelled()
+    if time.time() - job.created > JOB_BUDGET_S:
+        raise JobTimeout()
+
+
+def _timed_out(job: Job) -> None:
+    log.warning("analysis %s ran past its %d s budget", job.job_id, JOB_BUDGET_S)
+    with job.lock:
+        job.status, job.error = "failed", TOO_LONG
+        for stage in job.stages:
+            if stage["state"] == "running":
+                stage.update(state="failed", ended=time.time())
+
+
 def run(job: Job, pipe: MvPipeline, images: list[ImageInput], reference: str | None) -> None:
     def progress(name: str, data: dict) -> None:
-        if job.cancel:
-            raise JobCancelled()
+        _check(job)
         reduce(job, name, data)
 
     try:
@@ -309,6 +331,8 @@ def run(job: Job, pipe: MvPipeline, images: list[ImageInput], reference: str | N
     except JobCancelled:
         with job.lock:
             job.status = "cancelled"
+    except JobTimeout:
+        _timed_out(job)
     except Exception:
         log.exception("analysis %s failed", job.job_id)
         with job.lock:
@@ -361,14 +385,12 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
     from s2c.web.sketch_adapter import observed_from_sketch
 
     def progress(name: str, data: dict) -> None:
-        if job.cancel:
-            raise JobCancelled()
+        _check(job)
         reduce(job, name, data)
 
     def fused(name: str, data: dict) -> None:
         """observe() reports per-image label/outline/read stages a sheet job does not have; keep draw and fuse."""
-        if job.cancel:
-            raise JobCancelled()
+        _check(job)
         if data.get("key") in ("draw", "fuse"):
             reduce(job, name, data)
 
@@ -432,6 +454,8 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
     except JobCancelled:
         with job.lock:
             job.status = "cancelled"
+    except JobTimeout:
+        _timed_out(job)
     except UserFacing as e:
         log.warning("sheet analysis %s: %s (%s)", job.job_id, e.remedy, e.detail)
         with job.lock:

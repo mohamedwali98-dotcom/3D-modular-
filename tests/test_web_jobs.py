@@ -29,3 +29,15 @@ def test_the_time_to_live_counts_from_last_use(monkeypatch):
     jobs.touch(job)
     jobs.sweep_jobs()
     assert jobs.get_job(job.job_id) is job
+
+
+def test_a_job_past_its_budget_stops_with_a_plain_message(monkeypatch):
+    from pathlib import Path
+
+    from s2c.multiview.pipeline import ImageInput
+    png = (Path(__file__).resolve().parents[1] / "examples" / "mv" / "sketches" / "front.png").read_bytes()
+    monkeypatch.setattr(jobs, "JOBS", {})
+    monkeypatch.setattr(jobs, "JOB_BUDGET_S", 0)
+    job = jobs.new_job(1, MvPipeline())
+    jobs.run(job, MvPipeline(), [ImageInput(png, "front", "sketch")], None)
+    assert job.status == "failed" and job.error == jobs.TOO_LONG

@@ -17,6 +17,7 @@ DEFAULT_MODEL = "microsoft/trocr-base-handwritten"
 _LOADED: dict[tuple[str, str], tuple] = {}
 _LOCK = threading.Lock()
 _READ_LOCK = threading.Lock()  # concurrent batches queue instead of thrashing the same model and device
+READ_LOCK_S = 120.0  # how long a read waits for the model: one abandoned by a timed-out caller cannot block it forever
 
 
 def token_confidences(logprobs: np.ndarray, mask: np.ndarray) -> list[float]:
@@ -66,18 +67,26 @@ def _load(model_id: str, device: str) -> tuple:
         return _LOADED[(model_id, device)]
 
 
-def _run(processor, model, device: str, crops: list[Crop], max_new_tokens: int) -> list[ReaderResult]:
+def _generate(processor, model, device: str, crops: list[Crop], max_new_tokens: int):
     import torch
     from PIL import Image
 
     images = [Image.fromarray(cv2.cvtColor(c.image, cv2.COLOR_BGR2RGB)) for c in crops]
-    with _READ_LOCK:
-        pixels = processor(images=images, return_tensors="pt").pixel_values.to(device, dtype=model.dtype)
-        with torch.no_grad():
-            out = model.generate(pixels, max_new_tokens=max_new_tokens, num_beams=1, output_scores=True,
-                                 return_dict_in_generate=True)
-        texts = processor.batch_decode(out.sequences, skip_special_tokens=True)
-        scores = model.compute_transition_scores(out.sequences, out.scores, normalize_logits=True)
+    pixels = processor(images=images, return_tensors="pt").pixel_values.to(device, dtype=model.dtype)
+    with torch.no_grad():
+        out = model.generate(pixels, max_new_tokens=max_new_tokens, num_beams=1, output_scores=True,
+                             return_dict_in_generate=True)
+    texts = processor.batch_decode(out.sequences, skip_special_tokens=True)
+    return out, texts, model.compute_transition_scores(out.sequences, out.scores, normalize_logits=True)
+
+
+def _run(processor, model, device: str, crops: list[Crop], max_new_tokens: int) -> list[ReaderResult]:
+    if not _READ_LOCK.acquire(timeout=READ_LOCK_S):  # the reading service records it as a reader error
+        raise TimeoutError(f"TrOCR stayed busy for {READ_LOCK_S:.0f} s")
+    try:
+        out, texts, scores = _generate(processor, model, device, crops, max_new_tokens)
+    finally:
+        _READ_LOCK.release()
     generated = out.sequences[:, -scores.shape[1]:]  # the tokens the scores describe
     pad = model.generation_config.pad_token_id
     if pad is None:
