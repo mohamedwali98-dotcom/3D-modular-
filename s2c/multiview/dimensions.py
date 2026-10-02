@@ -22,7 +22,7 @@ LINE_MIN = 0.025     # a dimension line is at least this share of the sheet's lo
 WORD_GROW = 0.004    # glyphs closer than this share of the long side are one word
 REACH = 1.6          # a dimension line lies within this many text heights of its value
 AGREE = 0.03         # dimensions agreeing within this share give one scale
-MAX_WORDS = 40
+MAX_WORDS = 24
 
 
 @dataclass
@@ -42,6 +42,7 @@ class SheetScale:
     rejected: list[Dimension] = field(default_factory=list)
     dimensions: list[Dimension] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    confirmed: bool = False  # two or more dimensions agree and none disagrees: the sizes are measured, not checks
 
 
 def _segments(lines: np.ndarray, axis: str) -> list[tuple[float, int, int]]:
@@ -87,20 +88,27 @@ def read_dimensions(image_bgr: np.ndarray, ink: np.ndarray, bodies: list[tuple[B
     v_lines = cv2.morphologyEx(notes, cv2.MORPH_OPEN, np.ones((length, 1), np.uint8))
     segs = {"h": _segments(h_lines, "h"), "v": _segments(v_lines, "v")}
     text_ink = cv2.subtract(notes, cv2.dilate(cv2.bitwise_or(h_lines, v_lines), np.ones((3, 3), np.uint8)))
-    words = sorted(_words(text_ink, long), key=lambda b: -b[2] * b[3])[:MAX_WORDS]
+    words = []  # (box, the dimension line (axis, span) it is written on, or None)
+    for box in _words(text_ink, long):
+        if _solid(text_ink, box):
+            continue  # an arrowhead or a filled mark: never a number
+        line = _line_for(box, segs)
+        if line is not None or _near_view(box, bodies, long):  # a value on its line, or a Ø / R callout
+            words.append((box, line))
+    words = sorted(words, key=lambda w: (w[1] is None, -w[0][2] * w[0][3]))[:MAX_WORDS]
     if not words:
         return SheetScale(None)
     image = image_bgr if image_bgr.ndim == 3 else cv2.cvtColor(image_bgr, cv2.COLOR_GRAY2BGR)
     crops, owner = [], []
-    for k, (x, y, w, h) in enumerate(words):
+    for k, ((x, y, w, h), line) in enumerate(words):
         m = max(3, round(0.15 * min(w, h)))
         tile = image[max(0, y - m): y + h + m, max(0, x - m): x + w + m]
-        if h > 1.3 * w:  # written along a vertical dimension line: read it both ways round
-            for turn in (cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE):
-                crops.append(Crop(cv2.rotate(tile, turn), (x, y, w, h)))
-                owner.append(k)
-        else:
-            crops.append(Crop(tile, (x, y, w, h)))
+        upright = line is None or line[0] == "h"
+        turned = not upright or (line is None and h > 1.3 * w)
+        turns = ([None] if upright else []) + ([cv2.ROTATE_90_CLOCKWISE, cv2.ROTATE_90_COUNTERCLOCKWISE]
+                                                if turned else [])
+        for turn in turns:  # along a vertical line the text is turned: read it both ways round
+            crops.append(Crop(tile if turn is None else cv2.rotate(tile, turn), (x, y, w, h)))
             owner.append(k)
     runs = service.read(crops)
     found: dict[int, Dimension] = {}
@@ -109,46 +117,70 @@ def read_dimensions(image_bgr: np.ndarray, ink: np.ndarray, bodies: list[tuple[B
         if decided is None or k in found:
             continue
         text, (value, kind), _, confirmed = decided
-        x, y, w, h = words[k]
-        span = _span(words[k], segs) if kind == "linear" else None
-        found[k] = Dimension(value, kind, text, (x, y, w, h), span, confirmed)
-    dims = list(found.values())
-    return _agree(dims)
+        box, line = words[k]
+        span = line[1] if line is not None and kind == "linear" else None
+        found[k] = Dimension(value, kind, text, box, span, confirmed)
+    return _agree(list(found.values()))
 
 
-def _span(box: Box, segs) -> float | None:
-    """The length of the dimension line this value is written on: parallel to the text, within REACH text heights
-    of it, running under the text's middle."""
+def _solid(text_ink: np.ndarray, box: Box) -> bool:
+    """A filled mark (an arrowhead, a dot): its ink is thick for its size, where a written glyph is a thin stroke."""
     x, y, w, h = box
-    vertical = h > 1.3 * w
-    axis = "v" if vertical else "h"
-    size = w if vertical else h               # the text's height across its line
-    mid = y + h / 2 if vertical else x + w / 2
-    near, far = (x, x + w) if vertical else (y, y + h)
+    sub = (text_ink[y: y + h, x: x + w] > 0).astype(np.uint8)
+    if not sub.any():
+        return True
+    dist = cv2.distanceTransform(sub, cv2.DIST_L2, 3)
+    return float(dist.max()) > 0.3 * min(w, h)  # a triangle is a third of its size thick; bold text a quarter
+
+
+def _near_view(box: Box, bodies, long: int) -> bool:
+    x, y, w, h = box
+    reach = 0.08 * long
+    for (bx, by, bw, bh), _ in bodies:
+        if bx - reach <= x + w / 2 <= bx + bw + reach and by - reach <= y + h / 2 <= by + bh + reach:
+            return True
+    return False
+
+
+def _line_for(box: Box, segs) -> tuple[str, float] | None:
+    """The dimension line a value is written on, as (axis, length in px): parallel to the text, within REACH text
+    heights of it, running past the text's middle. Both orientations are tried; the nearer, in text heights, wins,
+    so a narrow single digit is read the right way round."""
+    x, y, w, h = box
     best = None
-    for pos, s, e in segs[axis]:
-        if not (s - size <= mid <= e + size):
-            continue
-        gap = min(abs(pos - near), abs(pos - far))
-        if gap > REACH * size or (near < pos < far):
-            continue
-        if best is None or gap < best[0]:
-            best = (gap, e - s + 1)
-    return float(best[1]) if best else None
+    for axis in ("h", "v"):
+        size = h if axis == "h" else w           # the text's height across its line
+        mid = x + w / 2 if axis == "h" else y + h / 2
+        near, far = (y, y + h) if axis == "h" else (x, x + w)
+        for pos, s, e in segs[axis]:
+            if not (s - size <= mid <= e + size) or near < pos < far:
+                continue
+            gap = min(abs(pos - near), abs(pos - far))
+            if gap <= REACH * size and (best is None or gap / size < best[0]):
+                best = (gap / size, axis, float(e - s + 1))
+    return (best[1], best[2]) if best else None
 
 
 def _agree(dims: list[Dimension]) -> SheetScale:
+    """The scale the dimensions agree on. Trusted (confirmed) only when two or more agree and none disagrees; one
+    lone dimension, or a group with a dissenter, gives sizes for the user to confirm; dimensions that do not agree
+    at all give no scale: a misread number never scales the part on its own (rule 2)."""
     linear = [d for d in dims if d.kind == "linear" and d.span_px]
     if not linear:
         return SheetScale(None, dimensions=dims)
     scales = np.array([d.value_mm / d.span_px for d in linear])
     support = [int(np.sum(np.abs(scales / s - 1) <= AGREE)) for s in scales]
     best = int(np.argmax(support))
+    if support[best] < 2 and len(linear) > 1:
+        texts = ", ".join(d.text for d in linear)
+        return SheetScale(None, dimensions=dims, warnings=[
+            f"The dimensions read ({texts}) do not agree with each other; type the sizes."])
     group = np.abs(scales / scales[best] - 1) <= AGREE
     used = [d for d, g in zip(linear, group, strict=True) if g]
     rejected = [d for d, g in zip(linear, group, strict=True) if not g]
     scale = float(np.median(scales[group]))
-    warnings = [f"The dimension {d.text} does not fit the drawing's scale; check it." for d in rejected]
+    warnings = [f"The dimension {d.text} does not fit the drawing's scale; check it and the sizes."
+                for d in rejected]
     if len(used) == 1:
-        warnings.append(f"Sizes are scaled from one dimension ({used[0].text}); check them.")
-    return SheetScale(scale, used, rejected, dims, warnings)
+        warnings.append(f"Sizes are scaled from one dimension ({used[0].text}); confirm them.")
+    return SheetScale(scale, used, rejected, dims, warnings, confirmed=len(used) >= 2 and not rejected)

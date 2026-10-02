@@ -39,6 +39,7 @@ class Observation:
     line_art: bool = False                      # a drawing in lines (drawing-sheet spec 3.3)
     hidden: list[tuple[str, float, float, float]] = field(default_factory=list)  # as PixelOutline.hidden
     stroke: float = 0.0                         # line width of a line drawing in px, 0 when not measured
+    scale_confirmed: bool = True                # False: mm_per_px gives suggestions, not measured values
 
     def __post_init__(self):
         """Whoever builds the observation, a line-art outline makes it line art and brings its hidden lines."""
@@ -87,7 +88,8 @@ def _envelope_candidates(observations: list[Observation]) -> dict[str, list[_Can
                 cands[axis].append(_Candidate(_value(r), prov, r.confidence, o.face, float(px), axis, r))
             if o.mm_per_px:  # a drawn outline is measured to its line's outside; a dimension, line middle to middle
                 span = px - o.stroke if o.line_art else px
-                cands[axis].append(_Candidate(span * o.mm_per_px, "measured", o.confidence, o.face, float(px), axis))
+                prov = "measured" if o.scale_confirmed else "unconfirmed"
+                cands[axis].append(_Candidate(span * o.mm_per_px, prov, o.confidence, o.face, float(px), axis))
     return cands
 
 
@@ -193,7 +195,7 @@ def _clamp(pts, a_len, b_len):
 
 
 def _outline_prov(o: Observation) -> str:
-    return "measured" if o.mm_per_px else "scaled"
+    return "measured" if o.mm_per_px and o.scale_confirmed else "scaled"
 
 
 def observed_outline(o: Observation, env: S.Envelope) -> S.Outline:
@@ -254,7 +256,7 @@ def _diameter(o: Observation, i: int, sa: float, sb: float) -> tuple[float, str]
         d, confirmed = written[-1]
         off = drawn > 0 and max(d / drawn, drawn / d) > SCALE_TRAP
         return float(d), "user_written" if confirmed and not off else "inferred"
-    return float(drawn), "measured" if o.mm_per_px else "scaled"
+    return float(drawn), "measured" if o.mm_per_px and o.scale_confirmed else "scaled"
 
 
 def features_from(observations: list[Observation], env: S.Envelope, edges: dict[int, set[int]] | None = None):

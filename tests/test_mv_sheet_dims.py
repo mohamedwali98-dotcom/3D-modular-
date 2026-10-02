@@ -85,6 +85,47 @@ def test_a_misread_dimension_is_rejected_and_named(third):
     assert scale.mm_per_px == pytest.approx(0.25, rel=0.01)
     assert [d.text for d in scale.rejected] == ["18"]
     assert any("18" in w for w in scale.warnings)
+    assert scale.confirmed is False  # one disagrees: the sizes come out for the user to confirm
+
+
+def test_six_agreeing_dimensions_confirm_the_scale(third):
+    from s2c.multiview.dimensions import read_dimensions
+    img, _, words = third
+    ink, bodies = _bodies(img, split_sheet(img))
+    assert read_dimensions(img, ink, bodies, _service(words)).confirmed is True
+
+
+def test_one_dimension_gives_a_scale_to_confirm(third):
+    from s2c.multiview.dimensions import read_dimensions
+    img, _, words = third
+    ink, bodies = _bodies(img, split_sheet(img))
+    scale = read_dimensions(img, ink, bodies, _service(words[:1]))
+    assert scale.mm_per_px == pytest.approx(0.25, rel=0.01) and scale.confirmed is False
+
+
+def test_two_dimensions_that_disagree_give_no_scale(third):
+    from s2c.multiview.dimensions import read_dimensions
+    img, _, words = third
+    ink, bodies = _bodies(img, split_sheet(img))
+    scale = read_dimensions(img, ink, bodies, _service([words[0], (words[2][0], "18")]))
+    assert scale.mm_per_px is None
+    assert any("do not agree" in w for w in scale.warnings)
+
+
+def test_an_unconfirmed_scale_suggests_the_sizes_instead_of_trusting_them():
+    from s2c.multiview import spec as S
+    from s2c.multiview.pipeline import ImageInput, MvPipeline
+    from tests.line_views import draw_view
+    pipe = MvPipeline()
+    images = []
+    for f in ("front", "top", "right"):
+        ink = cv2.copyMakeBorder(draw_view(_block(), f, 4.0), 30, 30, 30, 30, cv2.BORDER_CONSTANT, value=0)
+        images.append(ImageInput(cv2.imencode(".png", 255 - ink)[1].tobytes(), f, "drawing", mm_per_px=0.25,
+                                 scale_confirmed=False))
+    result = pipe.fuse(pipe.observe(images))
+    assert isinstance(result, S.MvAbstain) and result.stage == "dimensions"
+    suggested = result.partial["suggested"]
+    assert suggested["envelope.x_mm"] == pytest.approx(80, rel=0.02)
 
 
 def test_no_reader_no_scale(third):
@@ -110,3 +151,40 @@ def test_views_with_a_known_scale_build_with_no_typed_size():
     env = spec.envelope
     assert (env.x_mm, env.y_mm, env.z_mm) == pytest.approx((80, 60, 70), rel=0.02)
     assert spec.provenance["envelope.x_mm"] == "measured"
+
+
+class _Counting:
+    """WordReader that also counts the crops it is asked to read."""
+    name, calibrated = "count", True
+
+    def __init__(self, words):
+        from tests.line_views import WordReader
+        self.inner, self.crops = WordReader(words), 0
+
+    def read(self, crops):
+        self.crops += len(crops)
+        return self.inner.read(crops)
+
+
+def test_every_dimension_of_a_first_angle_sheet_is_read():
+    """Digits with loops (0, 6, 8, 9) are text, never a view's body: both vertical 66s are read."""
+    from s2c.multiview.dimensions import annotation_ink
+    from s2c.multiview.sheet import name_views
+    from s2c.multiview.sheet_read import part_bodies
+    img, _, words = drawing_sheet(_part(), layout="first", faces=("front", "top", "left"), iso=True)
+    sheet = split_sheet(img)
+    ink, bodies = part_bodies(sheet, img, name_views(sheet, img, "first"))
+    notes = annotation_ink(ink, bodies)
+    for (x, y, w, h), text in words:  # every pixel of every written value stays annotation, readable
+        assert np.count_nonzero(notes[y: y + h, x: x + w]) >= 0.95 * np.count_nonzero(ink[y: y + h, x: x + w]), text
+
+
+def test_only_words_beside_a_dimension_line_are_read(third):
+    """Arrowheads and stray marks are not sent to the reader: it is slow, and a mark read as "4" would be trouble."""
+    from s2c.multiview.dimensions import read_dimensions
+    from s2c.reading import ReadingService
+    img, _, words = third
+    ink, bodies = _bodies(img, split_sheet(img))
+    counting = _Counting(words)
+    read_dimensions(img, ink, bodies, ReadingService([counting], cache=None))
+    assert counting.crops <= 3 * len(words), counting.crops

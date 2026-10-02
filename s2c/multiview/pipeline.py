@@ -65,6 +65,7 @@ class ImageInput:
     face: str | None = None
     kind: str | None = None
     mm_per_px: float | None = None  # a known scale in the image's own pixels: a drawing sheet's dimensions
+    scale_confirmed: bool = True    # False: sizes from that scale are suggestions the user confirms
 
 
 @dataclass
@@ -199,7 +200,8 @@ class MvPipeline:
                       reads=[{"text": v.reading.text, "value_mm": v.reading.value_mm, "kind": v.reading.kind,
                               "bbox": v.reading.bbox, "confidence": v.reading.confidence} for v in values])
             obs = Observation(face=label.face, kind=label.input_kind, outline=outline, values=values,
-                              mm_per_px=mm_per_px, confidence=label.confidence * (RESCUE_PENALTY if rescued else 1.0),
+                              mm_per_px=mm_per_px, scale_confirmed=item.scale_confirmed or not given,
+                              confidence=label.confidence * (RESCUE_PENALTY if rescued else 1.0),
                               stroke=line_width(bgr, outline, mask_out) if outline.line_art and not rescued else 0.0)
             attach_label(obs, label)
             if rescued:

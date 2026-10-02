@@ -52,7 +52,8 @@ class SheetRead:
     def inputs(self):
         """The views as pipeline inputs: kind "drawing", the named face, and the sheet's scale when it was read."""
         from s2c.multiview.pipeline import ImageInput
-        return [ImageInput(c.png, c.face, "drawing", mm_per_px=self.scale.mm_per_px) for c in self.crops]
+        return [ImageInput(c.png, c.face, "drawing", mm_per_px=self.scale.mm_per_px,
+                           scale_confirmed=self.scale.confirmed) for c in self.crops]
 
 
 def _crops(sheet: Sheet, image: np.ndarray, naming: Naming, keep_unnamed: bool = False) -> list[SheetCrop]:
@@ -76,10 +77,15 @@ def _crops(sheet: Sheet, image: np.ndarray, naming: Naming, keep_unnamed: bool =
     return out
 
 
-def _bodies(sheet: Sheet, image: np.ndarray):
+def part_bodies(sheet: Sheet, image: np.ndarray, naming: Naming):
+    """The sheet's ink and the bodies of the part drawing's views: named ones and unnamed ones (a picture), never
+    a mark (dimension text split off on its own: the loops of a 0, 6, 8 or 9 would fill into a "body" and the
+    number would be erased before it is read)."""
     ink = ink_mask(image)
     long = max(image.shape[:2])
-    return ink, [view_body(ink, v.box, long) for d in sheet.drawings for v in d.views]
+    views = sheet.drawings[naming.drawing].views if naming.drawing >= 0 else []
+    return ink, [view_body(ink, v.box, long) for v, f in zip(views, naming.faces, strict=True)
+                 if f != SKIP and v.line_art]
 
 
 def _envelope(sheet: Sheet, naming: Naming, image: np.ndarray) -> S.Envelope | None:
@@ -165,7 +171,7 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
         warnings = [w for w in warnings if "pick the face by hand" not in w]
         warnings.append("A view that could not be named (an isometric picture, a detail) was left out; it is "
                         "only a picture of the part.")
-    ink, bodies = _bodies(sheet, image)
+    ink, bodies = part_bodies(sheet, image, naming)
     scale = read_dimensions(image, ink, bodies, service)
     warnings += scale.warnings
     if scale.mm_per_px:
