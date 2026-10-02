@@ -17,26 +17,31 @@ Three inputs, one pipeline, one output.
 | Input | How | Where the numbers come from |
 | --- | --- | --- |
 | Hand sketch | Draw it on paper, write the dimensions in mm, photograph it | Your handwriting, read by OCR |
-| Real part | Photograph it top-down next to a coin | Coin scale, measured with OpenCV |
+| Real part | Photograph it top-down next to a coin, a bank card or on A4 paper | The reference's known size, measured with OpenCV |
 | 2D drawing | A clean orthographic view with dimensions | Printed dimensions, read by OCR |
 
-Output: a STEP file for CAD tools and an STL file for slicers, plus a live 3D preview and sliders that re-derive the geometry when you change a number.
+Give one photo per face (front, top, right; several of a face if you have them), or one image holding several views: a drawing made on a computer, a scan, or a phone photo of a pen sketch. Output: STEP for CAD tools, STL and 3MF for slicers, G-code, drawings and more, plus a live 3D preview; every size can be edited on the Review screen before anything is built.
 
 ## How it works
 
+The web app (`s2c/web/`) and the Studio (`s2c/studio/`) run the multi-view path in `s2c/multiview/`:
+
 ```text
-image ──┬─ metrology   OpenCV: coin -> mm per pixel, contours in mm
-        ├─ ocr         written dimensions -> values linked to edges and holes
-        └─ vision      vision model -> topology only: part type, hole count, rough positions
-                │
-             merge      fuse + confidence gates -> PartSpec, or a clear abstention
-                │
-        PartSpec        the single source of truth, edited by sliders
-                │
-             builder    our own deterministic CadQuery code -> STEP + STL
-                │
-             views      six orthographic silhouettes -> round-trip match against the input
+photos, one per face ──┐
+                       ├─ observe   name each view (your tag or the vision model), trace its outline, read its
+one sheet or sketch ───┘            numbers (read_drawing: page, faces, names, numbers; TrOCR / Qwen-VL)
+               │
+             fuse        sizes from your written numbers, a measured scale or a reference object; a missing face
+               │         mirrored, or drawn by a hosted helper you turned on; holes, slots, pockets, bosses
+               │         -> MultiViewSpec, or a clear abstention
+            Review       you confirm or type every size; each value shows where it came from
+               │
+             build       our own deterministic CadQuery code: the intersection of the three extruded outlines,
+               │         turned parts revolved
+            export       STEP, STL, 3MF, OBJ, GLB, PLY, BREP, Blender, DXF/SVG/PDF, G-code, and a zip
 ```
+
+The contract between the stages is `s2c/multiview/spec.py`; the builder is `s2c/multiview/build.py`.
 
 Four rules shape every design decision:
 
@@ -45,7 +50,7 @@ Four rules shape every design decision:
 3. **Profile plus features.** A part is a 2D outline extruded straight, with holes, slots, fillets and chamfers. That covers plates, brackets, flanges, spacers and free-form outlines, and it is honest about what it cannot do.
 4. **Abstention is a feature.** Tilted coin, unsupported shape, missing thickness, poor round-trip match: each one stops with a reason and tells you what to do next.
 
-Supported part types: `plate`, `l_bracket`, `flange`, `spacer`, `profile_extrusion`. Features: `hole`, `slot`, `fillet`, `chamfer`. All dimensions in millimetres.
+The served path builds any part whose front, top and right views are extruded outlines, with holes, slots, pockets, bosses, fillets and chamfers; turned parts are revolved (going past rule 3 is an open team decision). The single-view grammar (`plate`, `l_bracket`, `flange`, `spacer`, `profile_extrusion`) lives in `s2c/partspec/` and is not on the served path. All dimensions in millimetres.
 
 ## Run it
 
@@ -104,8 +109,8 @@ cd web && npm run dev                                       # terminal 2, open h
 On Windows, `powershell scripts/dev.ps1` starts both (Ctrl+C stops both). Other entry points:
 
 ```bash
-uv run uvicorn s2c.api:app --port 8002        # the single-image API
-uv run python app_gradio.py                   # lab view on :7860
+uv run python app_mv_studio.py                # the Studio on :7860
+uv run python app_mv_gradio.py                # the simple lab app
 ```
 
 Without any model keys the app still runs end to end: the offline path traces the outlines, skips reading, and asks you to type the overall size on the Review screen. `GET /api/status` shows which providers are configured.
@@ -116,7 +121,7 @@ The vision model is chosen by three environment variables: `VLM_BASE_URL`, `VLM_
 
 Give one or more images per face, several of the same face if you have them: they are aligned and voted into one cleaner outline. Qwen-VL reads the numbers you wrote. Faces you did not give are drawn by Qwen-Image and kept only if they agree with the faces you did give; otherwise TripoSR, otherwise a rectangle. Solaria's depth map tells through holes from blind ones. The part is the intersection of the three extruded outlines, sliced to G-code. Designs: `docs/superpowers/specs/2026-09-22-multiview-gcode-design.md` and `docs/superpowers/specs/2026-09-23-qwen-solaria-design.md`.
 
-**One image, five steps** (`s2c/multiview/sheet_read.read_drawing`; spec `docs/superpowers/specs/2026-10-02-sketch-to-model-design.md`). Give one drawing made on a computer, one scan or one phone photo of a pen sketch, holding several views:
+**One image, five steps** (`read_drawing` in `s2c/multiview/sheet_read.py`; spec `docs/superpowers/specs/2026-10-02-sketch-to-model-design.md`). Give one drawing made on a computer, one scan or one phone photo of a pen sketch, holding several views:
 
 1. **Page:** a photo becomes a clean page (the sheet found, flattened, the ink binarised).
 2. **Faces:** each closed outline is a face. Dimension, miter and centre lines never join two views.
@@ -145,22 +150,23 @@ TripoSR (the local fallback when Qwen-Image cannot complete a face): `powershell
 
 ```text
 s2c/                Python package
-  partspec/         frozen contracts: PartSpec, Topology, Annotations, Measurements, Abstain
-  vision/           provider-agnostic client, prompts, topology extraction
-  merge.py          fuse stage outputs into a PartSpec, confidence gates
-  builder.py        PartSpec -> CadQuery solid -> STEP + STL
-  views.py          six silhouettes for the round-trip check
-  ocr.py            dimension reading and linking
-  metrology.py      coin scale and measured contours
-  silhouette.py     input silhouette, mask normalisation, IoU
-  api.py            FastAPI surface
-  fakes/            stand-ins for every stage so the pipeline runs before a module lands
-app_gradio.py       lab UI showing every stage output
+  web/              the FastAPI app the React UI calls (/api): jobs, access guard, files, the Describe chat
+  multiview/        the served path: spec (MultiViewSpec), sheet reading, outlines, fuse, build, export, golden set
+  reading/          handwriting readers (TrOCR, Qwen-VL) behind one reading service
+  sketch/           the team's hand-sketch reader; its capture step also cleans sketch photos for sheet reading
+  studio/           the Gradio Studio (guided flow, parameters, every export)
+  vision/           the OpenAI-compatible client (used by the readers)
+  silhouette.py     masks and IoU (used by /api)
+  partspec/, merge.py, pipeline.py, fakes/, store.py
+                    the single-view modules: contracts and their tests, not on the served path
+app_mv_studio.py    the Studio
+app_mv_gradio.py    the lab app
 web/                React + Three.js mobile web app
-tests/              pytest suite and the golden set of ground-truth parts
+scripts/            benchmarks, the golden-set evaluator, command-line build and export
+tests/              pytest suite; tests/golden_sketch is the golden set
 docs/
-  superpowers/specs/   the design spec
-  superpowers/plans/   one implementation plan per owner
+  superpowers/specs/   design specs
+  superpowers/plans/   implementation plans
   roles/               one brief per team member
   models.md            provider presets
   disclosure.md        tools, models and data used
@@ -207,10 +213,11 @@ Three people, three owners. The integrator owns the contracts, model layer, merg
 
 ## Status
 
-Updated 2026-09-26:
+Updated 2026-10-02:
 
-- **Single-view path:** Real code exists for the contracts (`s2c/partspec/`), the temp file store (`s2c/store.py`), the vision client and topology extraction (`s2c/vision/`), the sketch-path merge with its abstention gates (`s2c/merge.py`), and silhouette handling (`s2c/silhouette.py`). Fakes in `s2c/fakes/` allow the pipeline to run before all modules land. CI (`.github/workflows/ci.yml`) runs `ruff check` and `pytest` on push and PR.
-- **Multi-view path & Studio:** Built and tested with capture, review, modeling, and export across 12 formats, backed by over 290 automated tests and verified end-to-end on benchmark examples.
+- **Served path:** the multi-view path (per-face photos, or one drawing, scan or sketch photo) behind the web app and the Studio, with capture, review, modelling and export across 12 formats. About 970 automated tests; CI (`.github/workflows/ci.yml`) runs ruff, pytest, the web build and tests, a Docker build and a dependency audit; the golden set runs nightly (`.github/workflows/golden.yml`).
+- **Safety:** the API answers this computer only unless `S2C_ACCESS_TOKEN` is set, with rate limits, two build slots, bounded specs and uploads, and hosted image services off until the user turns them on.
+- **Single-view modules:** the contracts (`s2c/partspec/`), `s2c/merge.py`, `s2c/pipeline.py`, `s2c/fakes/` and `s2c/store.py` keep their tests but are not on the served path.
 - **Accuracy (2026-09-26):**
   - The multi-view path is measured on 400 reference parts, with the reference-part row in the table above.
   - Turned parts are now built as solids of revolution.

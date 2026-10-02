@@ -1,0 +1,20 @@
+"""Every file, module and command the README and CLAUDE.md name exists (audit H9): the docs describe the code
+that runs."""
+import re
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+PATH = re.compile(r"`((?:s2c|scripts|tests|web|docs|examples|profiles)/[\w./-]*\w|app_\w+\.py)`")
+APP = re.compile(r"uvicorn ([\w.]+):app")
+RUN = re.compile(r"uv run python ((?:scripts/)?\w+\.py)")
+
+
+@pytest.mark.parametrize("doc", ["README.md", "CLAUDE.md"])
+def test_every_named_path_exists(doc):
+    text = (ROOT / doc).read_text(encoding="utf-8")
+    missing = [p for p in PATH.findall(text) if "<" not in p and not (ROOT / p).exists()]
+    missing += [m for m in APP.findall(text) if not (ROOT / (m.replace(".", "/") + ".py")).exists()]
+    missing += [p for p in RUN.findall(text) if not (ROOT / p).exists()]
+    assert missing == []
