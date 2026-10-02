@@ -30,7 +30,7 @@ One entry point, `sheet_read.read_drawing(image, projection="auto", reader=None,
 - The ink, with small gaps mended (a closing of about two line widths, so a hand-drawn corner that does not quite meet still closes), is filled; lines up to about two line widths thick are opened away; every remaining blob of at least 1 % of the page is a view body. A view body's box is the view.
 - Dimension, extension, centre and miter lines, leaders, text, and the picture's thin lines cannot join two views or enlarge one, because they enclose no area.
 - Everything outside the bodies is annotation (text and dimension lines for step 4).
-- When the outline split finds fewer than two bodies, the existing dilation split is used (clean sheets keep today's behaviour exactly when the outline split is not needed).
+- Sketches use the outline split first, and the existing dilation split when it finds fewer than two bodies. Clean drawings keep exactly today's reader (dilation split, then view bodies), so the clean-sheet results do not move.
 
 ### 3.2 Labels
 Unchanged: the projection symbol, then consistent labels (read in step 4's pass), then how the views agree (`relief.mismatch`), ISO first-angle when unsure; a view that cannot be named (the 3D picture) is left out with a note. For sketches the scale check tolerance is widened from 8 % to 20 % (hand sketches are not drawn to scale).
