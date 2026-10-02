@@ -484,6 +484,18 @@ def _extended(ink: np.ndarray, axis: str, pos: float, lo: int, size: int, near: 
     return all(np.any(np.abs(crossing - edge) <= EXTENSION * size) for edge in (lo, lo + size))
 
 
+def observe_drawing(read: SheetRead, pipe, progress=None):
+    """The read views through the pipeline's observe step, with the numbers the sheet gave linked to them: the one
+    path from a read drawing to what fuse takes (the web job and the golden-set evaluator)."""
+    observed = pipe.observe(read.inputs(), None, progress=progress)
+    if isinstance(observed, S.MvAbstain):
+        return observed
+    link_sizes(read, observed)
+    link_diameters(read, observed)
+    observed.warnings[:0] = read.warnings
+    return observed
+
+
 def link_sizes(read: SheetRead, observed) -> None:
     """Each overall size written on the drawing becomes that view's written width or height (rule 2:
     user_written), so the envelope comes from the user's own numbers. A drawing whose dimensions confirm its scale

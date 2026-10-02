@@ -364,7 +364,7 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
         if page is not None:  # the photo is no usable page: say why and what to do
             raise RuntimeError(f"{page.remedy} ({page.stage}: {page.reason})")
         if read is not None:
-            from s2c.multiview.sheet_read import link_diameters, link_sizes
+            from s2c.multiview.sheet_read import observe_drawing
             naming, crops = read.naming, read.crops
             tool = "Sketch reader" if read.kind == "sketch" else "Drawing reader"
             with job.lock:
@@ -380,16 +380,13 @@ def run_sheet(job: Job, pipe: MvPipeline, image: ImageInput, projection: str = "
             progress("stage", {"key": "views", "state": "done",
                                "detail": f"{len(crops)} views found ({angle}, from the {naming.projection_source})"})
             progress("stage", {"key": "lines", "state": "running"})
-            observed = pipe.observe(read.inputs(), None, progress=fused)
+            observed = observe_drawing(read, pipe, progress=fused)
             progress("stage", {"key": "lines", "state": "done", "detail": "centre and hidden lines read"})
             progress("stage", {"key": "values", "state": "done" if read.scale.dimensions else "skipped",
                                "detail": _values_detail(read)})
             if isinstance(observed, MvAbstain):
                 _finish(job, observed, {})
                 return
-            link_sizes(read, observed)
-            link_diameters(read, observed)
-            observed.warnings[:0] = read.warnings
             with job.merge_lock:
                 job.observed = observed
                 res = pipe.fuse(observed, progress=progress)

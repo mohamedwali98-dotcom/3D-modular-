@@ -168,7 +168,7 @@ docs/
 
 ## Testing and reliability
 
-- **Golden set.** Ten hand-drawn sketches and five coin photos of parts with known dimensions. A test runs the full pipeline and checks every number within 5 percent or 1 mm.
+- **Golden set.** `tests/golden_sketch/`: real photos and drawings with their known numbers, read by the shipped path and scored by `scripts/golden_eval.py` (faces named, values read, sizes right, sizes silently wrong, builds) against `baseline.json`. CI runs it nightly (`.github/workflows/golden.yml`) and fails when a number falls more than 2 points. It holds one real sketch today: add your own photos (see its README), then run `--write-baseline`.
 - **Round trip.** The built solid is re-projected and compared with the input silhouette. Below 0.85 IoU the result is shown in amber with a warning.
 - **Builder.** Volume tests for every part type and feature.
 - **Abstention tests.** Each gate has a test that produces the right reason.
@@ -178,7 +178,7 @@ Accuracy numbers, updated as tests land:
 
 | Metric | Value |
 | --- | --- |
-| Golden sketches passing | pending, golden set not yet built |
+| Golden set (shipped path, TrOCR only; 2026-10-02) | 1 real sketch: faces 3/3, values read 3/10, sizes 2/2 right, 0 silently wrong, builds. One sample is too few to trust: real photos are needed |
 | Coin scale error | pending |
 | OCR value accuracy | pending |
 | Reference parts, multi-view path (400 parts with known STLs, clean renders, true size given; 2026-09-26) | built 95 % (381 of 400), median volume error 10.3 %, median 3D IoU 0.91, 31 % of parts within 5 % volume. Before the fixes of 2026-09-26: 89 %, 15.6 %, 0.87, 21 %. Not a phone-photo number: that is still unmeasured |

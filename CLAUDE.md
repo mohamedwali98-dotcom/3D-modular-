@@ -52,7 +52,7 @@ One OpenAI-compatible client. Configure with `VLM_BASE_URL`, `VLM_MODEL`, `VLM_A
 
 ## Testing
 
-- Golden set in `tests/golden/<name>/` with `image.jpg` and `expected.json`. Tolerance is 5 percent or 1 mm, whichever is larger.
+- Golden set in `tests/golden_sketch/<name>/` with `image.jpg` and `expected.json`, scored by `scripts/golden_eval.py --check` against `baseline.json` (nightly CI; sizes within 5 percent or 1 mm). Run `--write-baseline` after adding samples. A heuristic change to the reading path needs its before and after numbers here.
 - Every abstention gate has a test that produces the right `reason`.
 - Builder tests check volume for every part type. Views tests check self round-trip IoU above 0.98.
 - Write the failing test first, then the code.

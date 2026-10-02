@@ -18,6 +18,15 @@ One folder per sheet: `image.jpg` (or `.png`) and `expected.json`. No people, no
 - `holes[].at`: the hole centre on the two axes across the hole, in the team frame (x, y, z order, hole axis left out; Z has the front face at Z = depth).
 - Real sheets need real readers: run with `SKETCH_GOLDEN=1` and `SKETCH_READERS` set.
 
+## Scoring the shipped path
+
+`uv run python scripts/golden_eval.py` reads every folder that has an image through the path the web app runs
+(`sheet_read.read_drawing`, then the pipeline) with TrOCR alone, and prints what it got: faces named, values read,
+envelope sizes right or silently wrong, and whether the part builds. `--check` fails when a number fell more than 2
+points below `baseline.json`; `--write-baseline` records today's numbers after you add samples. Two optional keys
+serve it: `"projection"` (`"first"` or `"third"`, what the user would pick; default `"auto"`) and `"envelope"` with
+only the sizes you know for sure.
+
 ## Real-photo slot
 
 No real phone photos are in the set yet. To add one: make `tests/golden_sketch/<name>/`, put the photo there as

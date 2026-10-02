@@ -1,0 +1,21 @@
+# The golden set (tests/golden_sketch) through the shipped reading path, held to its committed baseline.
+# Nightly and on demand: it needs the trocr extra (torch and the TrOCR weights), too heavy for every push.
+name: golden
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+jobs:
+  accuracy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - run: uv python install 3.11
+      - run: uv sync --locked --extra trocr
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: hf-trocr-${{ hashFiles('s2c/reading/trocr.py') }}
+      - run: uv run python scripts/golden_eval.py --check
