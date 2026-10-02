@@ -114,6 +114,16 @@ The vision model is chosen by three environment variables: `VLM_BASE_URL`, `VLM_
 
 Give one or more images per face, several of the same face if you have them: they are aligned and voted into one cleaner outline. Qwen-VL reads the numbers you wrote. Faces you did not give are drawn by Qwen-Image and kept only if they agree with the faces you did give; otherwise TripoSR, otherwise a rectangle. Solaria's depth map tells through holes from blind ones. The part is the intersection of the three extruded outlines, sliced to G-code. Designs: `docs/superpowers/specs/2026-09-22-multiview-gcode-design.md` and `docs/superpowers/specs/2026-09-23-qwen-solaria-design.md`.
 
+**One image, five steps** (`s2c/multiview/sheet_read.read_drawing`; spec `docs/superpowers/specs/2026-10-02-sketch-to-model-design.md`). Give one clean drawing or one phone photo of a pen sketch holding several views:
+
+1. **Page:** a photo becomes a clean page (the sheet found, flattened, the ink binarised).
+2. **Faces:** each closed outline is a face. Dimension, miter and centre lines never join two views.
+3. **Labels:** the faces are named by the projection symbol, then the labels, then how the views agree, with ISO first-angle when unsure.
+4. **The rest:** a sketch's wobbly strokes are drawn again straight before notches, pockets and holes are read.
+5. **Numbers:** TrOCR reads them. A value whose dimension line spans a whole view is that size, written by you.
+
+A sketch is never taken as drawn to scale: any size no number gives is asked for in Review. The web app's one-sheet mode and the Studio use this path.
+
     uv run python app_mv_studio.py                                                           # the Studio on :7860 (guided flow, parameters, every export)
     uv run python app_mv_gradio.py                                                           # the simple lab app
     uv run python scripts/mv_build.py examples/mv/l_bracket.json --out tmp/mv_demo          # spec -> STEP, STL, G-code
@@ -172,6 +182,7 @@ Accuracy numbers, updated as tests land:
 | OCR value accuracy | pending |
 | Reference parts, multi-view path (400 parts with known STLs, clean renders, true size given; 2026-09-26) | built 95 % (381 of 400), median volume error 10.3 %, median 3D IoU 0.91, 31 % of parts within 5 % volume. Before the fixes of 2026-09-26: 89 %, 15.6 %, 0.87, 21 %. Not a phone-photo number: that is still unmeasured |
 | Drawing sheets (one first-angle line-art sheet per part: front, top and right views, labels on half; 44 reference parts, 4 per category; projection on Auto; 2026-10-02) | built 100 % (44 of 44), views named correctly 100 %, median volume error 13.1 %, median 3D IoU 0.895 (0.889 before notches and pockets were read from the inner lines). Hinges 0.77 -> 0.97. Weakest: brackets (IoU 0.59, round outlines, so the inner lines are not read) and one bearing holder whose rendered shading lines read as steps (0.81 -> 0.75) |
+| Real hand sketch (`tests/golden_sketch/real_bracket_1`, a phone photo of a pen sketch, TrOCR only; 2026-10-02) | 3 faces found and named. 3 of the 10 written values read exactly (60, 25, 3), and 2 more with the right number but without their ⌀. Width and depth come from the written numbers; the height is asked for (a misread 7 is flagged, not used). The part builds |
 | Median sketch-to-STL latency | pending full-pipeline measurement; one measured vision-model call (`gemma3:4b` via Ollama) took about 17.8 s, logged in `logs/vlm.jsonl` — this is a single sample of model latency only, not a pipeline median |
 
 Reference-part benchmark:
