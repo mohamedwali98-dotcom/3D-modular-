@@ -278,3 +278,20 @@ def test_a_hand_sketch_photo_is_split_into_named_faces_and_renamed_on_its_page(s
     assert all(i.mm_per_px is None for i in session.items)  # a sketch is never to scale
     studio.set_projection(sid, "first")
     assert sorted(i.face for i in session.items) == ["bottom", "front", "left"]
+
+
+def test_a_sketchs_faces_go_in_as_lines_with_their_numbers_read_once(tmp_path, monkeypatch):
+    """The Studio feeds a sketch's faces as the web does: drawn again in lines, and never read again for numbers
+    (a stub read as "1" would be a silently wrong size)."""
+    artifacts.clear_cache()
+    monkeypatch.setattr("s2c.multiview.slice.find_slicer", lambda: None)
+    studio = Studio(MvPipeline(reader=lambda crop: ("1", 0.99)), root=tmp_path / "files")
+    sid = studio.store.new()
+    studio.set_projection(sid, "third")
+    photo = Path(__file__).resolve().parent / "golden_sketch" / "real_bracket_1" / "image.jpg"
+    studio.add_images(sid, [str(photo)])
+    studio.analyze(sid, "none", AiSettings())
+    observed = studio.store.get(sid).observed
+    assert len(observed.observations) == 3
+    assert all(not o.values for o in observed.observations)
+    assert all(o.outline.line_art and not o.outline.inner for o in observed.observations)

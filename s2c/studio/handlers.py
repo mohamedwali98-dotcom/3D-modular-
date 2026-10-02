@@ -216,7 +216,8 @@ class Studio:
             crop = folder / f"{sheet_id}_{c.view}.png"
             crop.write_bytes(c.png)
             items.append(Item(uuid.uuid4().hex[:8], str(crop), f"{Path(path).name} · view {c.view + 1}", c.face,
-                              "drawing", sheet_id, c.view, mm_per_px=read.scale.mm_per_px))
+                              "drawing", sheet_id, c.view, mm_per_px=read.scale.mm_per_px, numbers=False,
+                              line_art=read.kind == "sketch"))
         read.sheet.warnings += [w for w in read.warnings if w not in read.naming.warnings]
         if read.kind == "sketch":  # its views are on the rectified page, not on the photo: rename them there
             page = folder / sheet_id / f"{Path(path).stem}.png"
@@ -337,7 +338,8 @@ class Studio:
                           "stop")
                 return Review(False, "capture", bad)
             images.append(ImageInput(data, None if item.face == "auto" else item.face,
-                                     None if item.kind == "auto" else item.kind, mm_per_px=item.mm_per_px))
+                                     None if item.kind == "auto" else item.kind, mm_per_px=item.mm_per_px,
+                                     numbers=item.numbers, line_art=item.line_art))
         pipe = self.pipe.configured(ai)
         observed = pipe.observe(images, None if reference in (None, "", "none") else reference)
         if isinstance(observed, S.MvAbstain):
