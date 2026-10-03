@@ -242,7 +242,7 @@ def _paddle_boxes(sheet_bgr: np.ndarray) -> list[tuple[int, int, int, int]]:
 
 def detect_text_boxes(sheet_bgr: np.ndarray, ink: np.ndarray, stroke_px: float):
     """Pretrained detector first; the classical detector when PaddleOCR is missing or fails."""
-    choice = os.environ.get("SKETCH_TEXT_DETECTOR", "auto")
+    choice = os.environ.get("SKETCH_TEXT_DETECTOR", "auto").strip().lower()
     if choice in ("auto", "paddle"):
         try:
             return _paddle_boxes(sheet_bgr)

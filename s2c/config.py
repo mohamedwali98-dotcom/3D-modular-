@@ -32,7 +32,7 @@ VARIABLES: dict[str, Var] = {
     "S2C_DATA_DIR": Var("path", "folder for working files (built parts, logs); default: the project folder"),
     "S2C_LOG_DIR": Var("path", "folder for the call logs; default: <data dir>/logs"),
     "S2C_LOG_FORMAT": _choice("log lines as JSON or plain text", "json", "text"),
-    "S2C_LOG_LEVEL": _choice("level of the app's own log lines", "DEBUG", "INFO", "WARNING", "ERROR"),
+    "S2C_LOG_LEVEL": _choice("level of the app's own log lines", "DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL"),
     # the vision model and the Describe chat
     "VLM_BASE_URL": Var("url", "OpenAI-compatible endpoint of the vision model"),
     "VLM_MODEL": Var("str", "vision model name"),

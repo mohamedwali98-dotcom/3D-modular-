@@ -9,7 +9,16 @@ import warnings
 from s2c.config import setting as _setting
 
 __version__ = "0.1.0"
-MAX_PIXELS = int(_setting("S2C_MAX_PIXELS", "40000000"))
+
+
+def _max_pixels() -> int:
+    try:
+        return int(_setting("S2C_MAX_PIXELS", "40000000"))
+    except ValueError:  # the startup check names the bad value; until then the default holds
+        return 40000000
+
+
+MAX_PIXELS = _max_pixels()
 os.environ["OPENCV_IO_MAX_IMAGE_PIXELS"] = str(MAX_PIXELS)
 if "cv2" in sys.modules:
     warnings.warn("cv2 was imported before s2c, so OPENCV_IO_MAX_IMAGE_PIXELS may not cap image decoding: "

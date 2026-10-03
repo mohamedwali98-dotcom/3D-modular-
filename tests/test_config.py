@@ -36,3 +36,83 @@ def test_the_server_refuses_to_start_on_a_bad_value(monkeypatch):
     monkeypatch.setattr(api, "default_pipeline", lambda: pytest.fail("the models load before the settings are checked"))
     with pytest.raises(RuntimeError, match="READ_TIMEOUT_S='soon'"), TestClient(app):
         pass
+
+
+def test_every_documented_line_works_when_uncommented():
+    """A line of .env.example uncommented as it stands is a valid value: its explanation is a comment, not part of it."""
+    import io
+
+    from dotenv import dotenv_values
+
+    text = (ROOT / ".env.example").read_text(encoding="utf-8")
+    uncommented = re.sub(r"^#\s*(?=[A-Z][A-Z0-9_]*=)", "", text, flags=re.MULTILINE)
+    values = {k: v or "" for k, v in dotenv_values(stream=io.StringIO(uncommented)).items() if k in config.VARIABLES}
+    assert config.problems(values) == []
+    assert {k: v for k, v in values.items() if "  " in v or v.startswith("#")} == {}
+
+
+def test_a_bad_log_level_is_named_by_the_check_not_a_crash(monkeypatch):
+    import io
+    import logging
+
+    from s2c import obs
+
+    monkeypatch.setenv("S2C_LOG_LEVEL", "verbose")
+    handler = obs.configure_logging(stream=io.StringIO(), force=True)
+    logging.getLogger().removeHandler(handler)
+    assert any("S2C_LOG_LEVEL" in p for p in config.problems())
+
+
+def test_a_bad_pixel_cap_is_named_by_the_check_not_a_crash():
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "S2C_MAX_PIXELS": "4e7"}
+    out = subprocess.run([sys.executable, "-c", "import s2c; print(s2c.MAX_PIXELS)"], env=env, capture_output=True,
+                         text=True, cwd=ROOT, check=False)
+    assert out.returncode == 0 and out.stdout.strip() == "40000000", out.stderr
+    assert any("S2C_MAX_PIXELS" in p for p in config.problems({"S2C_MAX_PIXELS": "4e7"}))
+
+
+def test_a_choice_the_check_accepts_is_the_choice_the_code_makes(monkeypatch):
+    from s2c.multiview import qwen_image
+    from s2c.sketch import text
+
+    for name, value in {"QWEN_IMAGE_BACKEND": "DashScope", "QWEN_IMAGE_BASE_URL": "https://x.example/api",
+                        "QWEN_IMAGE_MODEL": "m", "VLM_API_KEY": "k", "SKETCH_TEXT_DETECTOR": "Paddle"}.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(qwen_image, "dashscope_gen", lambda *args: "dashscope")
+    monkeypatch.setattr(text, "_paddle_boxes", lambda sheet: "paddle")
+    assert config.problems() == [] or all("QWEN" not in p and "SKETCH" not in p for p in config.problems())
+    assert qwen_image.default_gen() == "dashscope"
+    assert text.detect_text_boxes(None, None, 1.0) == "paddle"
+    assert config.problems({"S2C_LOG_LEVEL": "critical"}) == [] and config.problems({"S2C_LOG_LEVEL": "warn"}) == []
+
+
+def test_the_gradio_apps_may_serve_files_from_the_data_folder(monkeypatch, tmp_path):
+    import dotenv
+
+    import app_mv_gradio as lab
+    from s2c.studio import app as studio
+
+    calls = []
+
+    class Fake:
+        def queue(self, **kwargs):
+            return self
+
+        def launch(self, **kwargs):
+            calls.append(kwargs)
+
+    monkeypatch.setenv("S2C_DATA_DIR", str(tmp_path))
+    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setattr(studio.obs, "configure_logging", lambda *a, **k: None)
+    monkeypatch.setattr(studio.config, "problems", lambda *a: [])
+    monkeypatch.setattr(studio, "build_app", lambda *a: Fake())
+    studio.launch()
+    monkeypatch.setattr(lab, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setattr(lab, "build_app", lambda *a: Fake())
+    monkeypatch.setattr(lab, "default_pipeline", lambda: None)
+    lab.main()
+    assert [c.get("allowed_paths") for c in calls] == [[str(tmp_path)], [str(tmp_path)]]

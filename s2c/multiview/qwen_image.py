@@ -160,7 +160,7 @@ def space_gen(space: str, token: str | None = None, client_factory=None, timeout
 
 def default_gen() -> ImageGen | None:
     """QWEN_IMAGE_BACKEND=dashscope with its settings, else the Space in QWEN_IMAGE_SPACE, else None."""
-    backend = os.environ.get("QWEN_IMAGE_BACKEND", "space")
+    backend = os.environ.get("QWEN_IMAGE_BACKEND", "space").strip().lower()
     base, model, key = (os.environ.get(k) for k in ("QWEN_IMAGE_BASE_URL", "QWEN_IMAGE_MODEL", "VLM_API_KEY"))
     if backend == "dashscope":
         if base and model and key:

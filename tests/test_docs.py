@@ -24,3 +24,16 @@ def test_the_trocr_extra_asks_for_the_transformers_it_is_tested_with():
     import tomllib
     extras = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["optional-dependencies"]
     assert "transformers>=5" in extras["trocr"] and len({d for e in extras.values() for d in e if d.startswith("torch")}) == 1
+
+
+def test_the_triposr_setup_reaches_its_commit_even_from_an_old_shallow_clone():
+    script = (ROOT / "scripts" / "setup_triposr.ps1").read_text(encoding="utf-8")
+    assert "fetch --depth 1 origin $Commit" in script and "$LASTEXITCODE" in script
+
+
+def test_the_readme_says_what_the_lock_installs_for_triposr():
+    import tomllib
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    versions = {p["version"] for p in lock["package"] if p["name"] == "transformers"}
+    if all(int(v.split(".")[0]) >= 5 for v in versions):
+        assert "local TripoSR does not run in the locked environment" in (ROOT / "README.md").read_text(encoding="utf-8")

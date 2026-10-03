@@ -308,4 +308,5 @@ def launch() -> None:
     found = config.problems()
     if found:
         raise RuntimeError("Settings: " + "; ".join(found))
-    build_app().queue(max_size=20, default_concurrency_limit=1).launch(theme=THEME, css=CSS, max_file_size="20mb")
+    build_app().queue(max_size=20, default_concurrency_limit=1).launch(theme=THEME, css=CSS, max_file_size="20mb",
+                                                                     allowed_paths=[str(config.data_dir())])

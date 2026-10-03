@@ -55,7 +55,9 @@ def configure_logging(stream=None, force: bool = False) -> logging.Handler:
     else:
         handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
-    logging.getLogger("s2c").setLevel(os.environ.get("S2C_LOG_LEVEL", "INFO").upper())
+    level = os.environ.get("S2C_LOG_LEVEL", "INFO").strip().upper()
+    # an unknown level is named by the startup check (s2c/config.py), which runs after this
+    logging.getLogger("s2c").setLevel(level if level in logging.getLevelNamesMapping() else "INFO")
     return handler
 
 

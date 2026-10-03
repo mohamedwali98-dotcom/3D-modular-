@@ -13,7 +13,7 @@ import gradio as gr
 import numpy as np
 from dotenv import load_dotenv
 
-from s2c.config import data_path
+from s2c.config import data_dir, data_path
 from s2c.multiview.pipeline import ImageInput, MvPipeline, Observed, default_pipeline
 from s2c.multiview.raster import outline_mask
 from s2c.multiview.spec import CANONICAL_FACES, CANONICAL_OF, FACES, MultiViewSpec, MvAbstain, face_size
@@ -273,6 +273,10 @@ def build_app(pipe: MvPipeline) -> gr.Blocks:
     return app
 
 
-if __name__ == "__main__":
+def main() -> None:
     load_dotenv()
-    build_app(default_pipeline()).launch()
+    build_app(default_pipeline()).launch(allowed_paths=[str(data_dir())])  # the built parts live there
+
+
+if __name__ == "__main__":
+    main()
