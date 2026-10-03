@@ -16,7 +16,7 @@ def readers(sh):
     return [TruthReader(sh.texts, "a"), TruthReader(sh.texts, "b")]
 
 
-SIDE_LOSS = pytest.mark.xfail(strict=False, reason=(
+SIDE_LOSS = pytest.mark.xfail(strict=True, reason=(
     "Known classify limit: the SIDE '50' dimension line is cut by the '12.5' text (accepted loss); its leftover "
     "extension line and arrow stub stay visible edges, widen the SIDE depth (z ~34.6 instead of 25) and break the "
     "x-hole and badge checks downstream."))

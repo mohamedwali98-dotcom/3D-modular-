@@ -15,7 +15,7 @@ from sketch_accuracy import score
 GOLDEN = Path(__file__).resolve().parents[1] / "golden_sketch"
 
 
-@pytest.mark.xfail(strict=False, reason=(
+@pytest.mark.xfail(strict=True, reason=(
     "Known classify limits end to end (13 of 18 values read at the right view): the SIDE '50' dimension is cut by "
     "the '12.5' text and its remnants widen the SIDE view; see tasks-10-13 report."))
 def test_synthetic_bridge_block_scores_perfectly():
