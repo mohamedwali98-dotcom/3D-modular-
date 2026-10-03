@@ -41,3 +41,29 @@ def test_metrics_render_in_prometheus_text():
     text = obs.render()
     assert 's2c_jobs_total{mode="photos",outcome="done"} 1' in text
     assert 's2c_stage_seconds_sum{stage="fuse"} 1.5' in text and 's2c_stage_seconds_count{stage="fuse"} 1' in text
+
+
+def test_provider_fallbacks_are_counted_where_they_happen(monkeypatch):
+    import numpy as np
+
+    from s2c.multiview import hf3d
+    from s2c.reading import Crop, ReadingService
+
+    def down(img):
+        raise RuntimeError("down")
+
+    class Broken:
+        name = "qwen"
+
+        def read(self, crops):
+            raise RuntimeError("boom")
+
+    obs.reset()
+    monkeypatch.setattr(hf3d, "local_triposr", down)
+    monkeypatch.setattr(hf3d, "space_triposr", down)
+    with pytest.raises(RuntimeError):
+        hf3d.default_provider()(np.zeros((8, 8, 3), np.uint8))
+    ReadingService([Broken()]).read([Crop(np.zeros((20, 30, 3), np.uint8), (0, 0, 30, 20))])
+    text = obs.render()
+    assert 's2c_fallbacks_total{name="triposr_local"} 1' in text and 's2c_fallbacks_total{name="triposr_space"} 1' in text
+    assert 's2c_fallbacks_total{name="reader_qwen"} 1' in text

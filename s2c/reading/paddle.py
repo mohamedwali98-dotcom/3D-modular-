@@ -6,6 +6,7 @@ import os
 
 import numpy as np
 
+from s2c import obs
 from s2c.reading.base import Crop, ReaderResult
 
 log = logging.getLogger(__name__)
@@ -37,5 +38,5 @@ class PaddleReader:
                     confidence=float(np.clip(data.get("rec_score", 0.0), 0, 1))))
             return out
         except Exception as exc:  # noqa: BLE001
-            log.warning("paddle reader failed: %s", exc)
+            obs.fallback("reader_paddle", exc)
             return None

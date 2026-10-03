@@ -9,6 +9,7 @@ from typing import Literal
 import cv2
 import numpy as np
 
+from s2c import obs
 from s2c.reading import MIN_CONFIDENCE, Crop, Reader, ReadingService
 from s2c.sketch.grammar import Parsed, match_label, parse_text
 from s2c.sketch.models import Reading, SketchAbstain, ViewName
@@ -246,8 +247,10 @@ def detect_text_boxes(sheet_bgr: np.ndarray, ink: np.ndarray, stroke_px: float):
         try:
             return _paddle_boxes(sheet_bgr)
         except Exception as exc:  # noqa: BLE001 - missing optional dependency, or a model error
-            if choice == "paddle":
-                log.warning("paddle text detector failed, using the classical one: %s", exc)
+            if choice == "paddle":  # asked for by name: said out loud; on auto a missing PaddleOCR is normal
+                obs.fallback("paddle_text_detector", exc)
+            else:
+                obs.count("s2c_fallbacks_total", name="paddle_text_detector")
     return find_text_boxes(ink, stroke_px)
 
 

@@ -16,7 +16,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from s2c import MAX_PIXELS
+from s2c import MAX_PIXELS, obs
 from s2c.multiview import spec as S
 from s2c.multiview.artifacts import ROOT, build_part, bundle, export_part, sweep
 from s2c.multiview.finish import largest_finish
@@ -202,8 +202,8 @@ class Studio:
             if face == "auto":
                 try:
                     views = self._split(session, str(p))
-                except Exception:  # the split is a refinement: an upload must never be lost to it
-                    log.warning("sheet split failed for %s", p, exc_info=True)
+                except Exception as e:  # noqa: BLE001 - the split is a refinement: an upload must never be lost to it
+                    obs.fallback("sheet_split", e)
             session.items += views or [Item(uuid.uuid4().hex[:8], str(p), Path(p).name, face)]
         session.sheet_notes = _sheet_notes(session)
 

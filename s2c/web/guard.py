@@ -16,6 +16,8 @@ from contextlib import contextmanager
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 
+from s2c import obs
+
 LOCAL = frozenset({"127.0.0.1", "::1", "localhost"})
 OPEN_PATHS = frozenset({"/api/status", "/api/examples"})  # GET (and HEAD) these exact paths...
 OPEN_PREFIXES = ("/api/examples/", "/api/artifacts/")      # ...and anything under these
@@ -84,6 +86,7 @@ LIMITER = RateLimiter()
 def build_slot():
     """One of BUILD_SLOT_COUNT builds, or 429 at once: a burst of builds never takes every worker thread."""
     if not BUILD_SLOTS.acquire(blocking=False):
+        obs.count("s2c_refused_total", reason="busy")
         raise HTTPException(429, BUSY)
     try:
         yield
@@ -99,9 +102,11 @@ def install_guards(app: FastAPI) -> None:
             return await call_next(request)
         why = refusal(request)
         if why is not None:
+            obs.count("s2c_refused_total", reason="token")
             return JSONResponse({"error": why}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
         limit = LIMITS.get((request.method, path))
         host = request.client.host if request.client else ""
         if limit is not None and not LIMITER.allow((host, path), limit):
+            obs.count("s2c_refused_total", reason="rate")
             return JSONResponse({"error": SLOW_DOWN}, status_code=429, headers={"Retry-After": str(int(WINDOW_S))})
         return await call_next(request)

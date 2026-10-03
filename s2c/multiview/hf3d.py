@@ -15,6 +15,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+from s2c import obs
 from s2c.multiview.raster import Mesh
 
 log = logging.getLogger(__name__)
@@ -134,7 +135,7 @@ def default_provider():
             try:
                 return fn(image_bgr)
             except Exception as e:  # noqa: BLE001 - a failed provider falls back, never breaks the request
-                log.warning("TripoSR %s failed: %s", name, e)
+                obs.fallback(f"triposr_{name}", e)
                 errors.append(f"{name}: {e}")
         raise RuntimeError("; ".join(errors))
     return provide

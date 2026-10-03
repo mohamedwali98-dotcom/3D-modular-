@@ -8,6 +8,7 @@ import logging
 import numpy as np
 from pydantic import BaseModel, ConfigDict
 
+from s2c import obs
 from s2c.multiview.label import Chat, strip_fences
 from s2c.multiview.ocr import BatchReader
 from s2c.reading.tiles import tile_grid
@@ -46,7 +47,7 @@ def qwen_batch_reader(chat: Chat) -> BatchReader:
             try:
                 raw = chat(messages)
             except Exception as e:  # noqa: BLE001 - a failed provider falls back, never breaks the request
-                log.warning("Qwen-VL read failed: %s", e)
+                obs.fallback("qwen_vl", e)
                 return None
             try:
                 parsed = _Reads.model_validate_json(strip_fences(raw))
@@ -71,4 +72,4 @@ def warm_chat(chat: Chat) -> None:
     try:
         chat([{"role": "user", "content": "Reply with OK."}])
     except Exception as e:  # noqa: BLE001 - a failed warm-up only means a slower first read
-        log.warning("Qwen-VL warm-up failed: %s", e)
+        obs.fallback("warmup_qwen_vl", e)

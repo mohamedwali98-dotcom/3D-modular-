@@ -18,6 +18,7 @@ from typing import Literal
 
 import numpy as np
 
+from s2c import obs
 from s2c.logdir import log_file
 from s2c.reading.base import Crop, Reader, ReaderResult
 
@@ -128,7 +129,7 @@ class ReadingService:
             try:
                 fresh = reader.read([crops[i] for i in todo])
             except Exception as e:  # noqa: BLE001 - a reader must never break the caller
-                log.warning("reader %s failed: %s", reader.name, e)
+                obs.fallback(f"reader_{reader.name}", e)
                 return ReaderRun(reader.name, calibrated, None, "error", _ms(t0), len(hits))
             if fresh is None or len(fresh) != len(todo):
                 if fresh is not None:
@@ -153,7 +154,7 @@ class ReadingService:
                     warm()
                     log.info("reader %s ready in %.1f s", reader.name, time.perf_counter() - t0)
                 except Exception as e:  # noqa: BLE001 - a failed warm-up only means a slower first read
-                    log.warning("reader %s warm-up failed: %s", reader.name, e)
+                    obs.fallback(f"warmup_{reader.name}", e)
 
         thread = threading.Thread(target=run, name="reader-warmup", daemon=True)
         thread.start()

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 
+from s2c import obs
 from s2c.reading.base import Reader
 
 log = logging.getLogger(__name__)
@@ -28,5 +29,5 @@ def readers_from_env(spec: str | None = None) -> list[Reader]:
             else:
                 log.warning("unknown reader %r skipped", name)
         except Exception as exc:  # noqa: BLE001 - a missing optional dependency must not stop
-            log.warning("reader %s unavailable: %s", name, exc)
+            obs.fallback(f"reader_{name}_unavailable", exc)
     return out

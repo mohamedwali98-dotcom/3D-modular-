@@ -15,6 +15,7 @@ import cv2
 import numpy as np
 from pydantic import ValidationError
 
+from s2c import obs
 from s2c.multiview import qwen_reader
 from s2c.multiview import spec as S
 from s2c.multiview.build import BuildError, export
@@ -259,7 +260,7 @@ class MvPipeline:
                 depth = self.depth(observed.images[k])
                 warnings += apply_depth(observed.observations[k], depth, excluded[k])
             except Exception as e:  # noqa: BLE001 - a failed provider falls back, never breaks the request
-                log.warning("Solaria failed on %s: %s", face, e)
+                obs.fallback("solaria", e)
                 warnings.append(f"{face}: depth unavailable")
         return warnings
 
@@ -335,7 +336,7 @@ class MvPipeline:
         try:
             axis = turned_axis(spec)
         except Exception as e:  # noqa: BLE001 - the turn is a refinement; its check must never break a fuse
-            log.warning("turned check failed: %s", e)
+            obs.fallback("turned_check", e)
             axis = None
         note = axis and TURNED_WARNING.format(axis=axis)
         if note and note not in spec.warnings:
@@ -373,7 +374,7 @@ def _warm_readers(reader: object | None, read_chat: Chat | None) -> None:
                 warm()
                 log.info("reader %s ready in %.1f s", reader.name, time.perf_counter() - t0)
             except Exception as e:  # noqa: BLE001 - a failed warm-up only means a slower first read
-                log.warning("reader %s warm-up failed: %s", reader.name, e)
+                obs.fallback(f"warmup_{reader.name}", e)
     if read_chat is not None:
         qwen_reader.warm_chat(read_chat)
 
@@ -385,12 +386,12 @@ def default_pipeline() -> MvPipeline:
         from s2c.reading.trocr import TrocrReader
         reader = TrocrReader()
     except Exception as e:  # noqa: BLE001 - transformers missing: fall back without TrOCR
-        log.warning("TrOCR unavailable: %s", e)
+        obs.fallback("trocr_unavailable", e)
     try:
         from s2c.multiview.hf3d import default_provider
         provider = default_provider()
     except Exception as e:  # noqa: BLE001 - a failed provider falls back, never breaks the request
-        log.warning("TripoSR unavailable: %s", e)
+        obs.fallback("triposr_unavailable", e)
     read_chat = env_chat(stage="mv_read")
     if reader is not None or read_chat is not None:
         threading.Thread(target=_warm_readers, args=(reader, read_chat), name="reader-warmup",

@@ -8,6 +8,7 @@ import logging
 import cv2
 import numpy as np
 
+from s2c import obs
 from s2c.multiview.outline import PixelOutline, extract, foreground, resize_long_side, to_face_mm
 from s2c.multiview.qwen_image import ImageGen, ImageGenError
 from s2c.multiview.raster import iou, polygon_mask
@@ -100,7 +101,7 @@ def _drawn(gen: ImageGen | None, refs, face: str, cache: dict, seed: int) -> np.
         try:
             cache[key] = gen([img for _, img in refs], face_prompt([f for f, _ in refs], face), seed, "mv_face")
         except ImageGenError as e:
-            log.warning("Qwen-Image %s failed: %s", face, e)
+            obs.fallback("qwen_image", e)
             cache[key], cache[FAILED] = None, True
     return cache[key]
 
@@ -145,7 +146,7 @@ def rescue_sketch(image_bgr: np.ndarray, gen: ImageGen, seed: int = SEED) -> Pix
     try:
         drawn = gen([image_bgr], RESCUE_PROMPT, seed, "mv_rescue")
     except ImageGenError as e:
-        log.warning("sketch rescue failed: %s", e)
+        obs.fallback("qwen_image_rescue", e)
         return None
     outline = extract(cv2.resize(drawn, (w, h), interpolation=cv2.INTER_AREA))
     if isinstance(outline, MvAbstain):

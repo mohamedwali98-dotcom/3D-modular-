@@ -13,6 +13,8 @@ import cv2
 import numpy as np
 from scipy import ndimage
 
+from s2c import obs
+
 if TYPE_CHECKING:
     from s2c.multiview.ocr import Reader
 
@@ -678,8 +680,8 @@ def _read_label(image: np.ndarray, box: Box | None, reader: Reader | None) -> st
             text = out[0].text if out else ""
         else:
             text, _ = reader(crop)
-    except Exception:  # an OCR failure must not stall the sheet: the layout still names the view
-        log.warning("label reader failed", exc_info=True)
+    except Exception as e:  # noqa: BLE001 - an OCR failure must not stall the sheet: the layout still names the view
+        obs.fallback("label_reader", e)
         return ""
     return str(text or "").strip()
 

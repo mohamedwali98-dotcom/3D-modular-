@@ -386,6 +386,7 @@ class BodyLimit:
         limit, sentence = (MAX_BODY, SENTENCES[413]) if upload else (MAX_JSON, TOO_LARGE_JSON)
         declared = headers.get(b"content-length", b"")
         if declared.isdigit() and int(declared) > limit:
+            obs.count("s2c_refused_total", reason="body")
             return await JSONResponse({"error": sentence}, status_code=413)(scope, receive, send)
         received, cut = 0, False
 
@@ -409,6 +410,7 @@ class BodyLimit:
             if not cut:
                 raise
         if cut:
+            obs.count("s2c_refused_total", reason="body")
             await JSONResponse({"error": sentence}, status_code=413)(scope, receive, send)
 
 
@@ -437,4 +439,5 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(Exception)
     async def crash(request: Request, exc: Exception) -> JSONResponse:
         log.exception("unhandled error on %s", request.url.path, exc_info=exc)
+        obs.count("s2c_errors_total")
         return JSONResponse({"error": "Something went wrong on our side."}, status_code=500)

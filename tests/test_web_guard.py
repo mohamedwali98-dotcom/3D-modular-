@@ -100,3 +100,24 @@ def test_only_the_named_routes_are_open():
     assert remote.head("/api/status").status_code != 401
     examples = remote.get("/api/examples").json()
     assert examples and remote.get(examples[0]["url"]).status_code == 200
+
+
+def test_every_refusal_is_counted_by_reason():
+    from s2c import obs
+    from s2c.web import guard
+    obs.reset()
+    client(REMOTE).post("/api/merge", json=UNKNOWN_JOB)
+    body = {"messages": [{"role": "user", "content": "a plate"}]}
+    for _ in range(guard.LIMITS[("POST", "/api/chat")] + 1):
+        client().post("/api/chat", json=body)
+    taken = [guard.BUILD_SLOTS.acquire(blocking=False) for _ in range(guard.BUILD_SLOT_COUNT)]
+    try:
+        client().post("/api/model", json={"spec": SPEC})
+    finally:
+        for _ in taken:
+            guard.BUILD_SLOTS.release()
+    client().post("/api/model", content=b'{"spec": "' + b"x" * (3 * 1024 * 1024) + b'"}',
+                  headers={"Content-Type": "application/json"})
+    text = obs.render()
+    for reason in ("token", "rate", "busy", "body"):
+        assert f's2c_refused_total{{reason="{reason}"}} 1' in text, reason

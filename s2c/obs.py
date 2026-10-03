@@ -88,7 +88,8 @@ def time_spent(metric: str, seconds: float, /, **labels) -> None:
 
 def fallback(name: str, exc: BaseException) -> None:
     """A provider failed and the app went on without it: logged and counted, never silent."""
-    log.warning("fallback %s: %s: %s", name, type(exc).__name__, exc)
+    log.warning("fallback %s: %s: %s", name, type(exc).__name__, exc,
+                exc_info=exc if log.isEnabledFor(logging.DEBUG) else None)
     count("s2c_fallbacks_total", name=name)
 
 

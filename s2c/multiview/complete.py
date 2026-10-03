@@ -9,6 +9,7 @@ from collections.abc import Callable
 
 import numpy as np
 
+from s2c import obs
 from s2c.multiview.qwen_faces import SEED, TRIES, qwen_face
 from s2c.multiview.qwen_image import ImageGen
 from s2c.multiview.raster import Mesh, face_mask, iou, mask_to_mm, normalize_mask
@@ -106,7 +107,7 @@ def complete(outlines: dict[str, Outline], env: Envelope, target_face: str, targ
         try:
             mesh = provider(image)
         except Exception as e:  # noqa: BLE001 - a failed provider falls back, never breaks the request
-            log.warning("3D predictor failed: %s", e)
+            obs.fallback("triposr", e)
             warnings.append("3D predictor unavailable")
     fitted, score = None, 0.0
     if wanted and mesh is not None:

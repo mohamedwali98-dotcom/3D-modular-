@@ -7,6 +7,7 @@ import cv2
 import numpy as np
 from pydantic import BaseModel, Field, ValidationError
 
+from s2c import obs
 from s2c.reading.base import Crop, ReaderResult, read_timeout_s
 from s2c.vision.client import VLMClient
 
@@ -88,7 +89,7 @@ class VlmReader:
             try:
                 raw = self.client.complete_json(SYSTEM, user, image, mime="image/png")
             except Exception as exc:  # noqa: BLE001 transport errors must not break the pipeline
-                log.warning("vlm reader failed: %s", exc)
+                obs.fallback("reader_vlm", exc)
                 return None
             try:
                 reply = _Reply.model_validate_json(_json_block(raw))
