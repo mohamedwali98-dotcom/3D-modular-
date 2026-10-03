@@ -615,13 +615,20 @@ def assemble(env: S.Envelope, env_prov: dict, outlines: dict, feats: list[dict],
     removed = set()
     for path, value in (user_values or {}).items():
         m = _FEATURE_PATH.fullmatch(path)
-        if m and int(m.group(1)) < len(data["features"]):
-            if m.group(2) == "keep":  # the user took a misread feature out: "features[k].keep" = 0
-                if not value:
-                    removed.add(int(m.group(1)))
-                continue
-            data["features"][int(m.group(1))][m.group(2)] = float(value)
-            data["provenance"][path] = "user_edited"
+        if not m:
+            continue
+        k, name = int(m.group(1)), m.group(2)
+        feature = data["features"][k] if k < len(data["features"]) else None
+        if feature is None or (name != "keep" and (name not in feature or name in ("type", "face"))):
+            # features renumber when a rejected face changes the pockets: a stale edit is said, never applied
+            data["warnings"].append(f"A value you typed ({path}) was left out: this part has no such value now.")
+            continue
+        if name == "keep":  # the user took a misread feature out: "features[k].keep" = 0
+            if not value:
+                removed.add(k)
+            continue
+        feature[name] = float(value)
+        data["provenance"][path] = "user_edited"
     if removed:
         _drop_features(data, removed)
     if snap_values:

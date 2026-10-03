@@ -560,6 +560,23 @@ def test_an_edit_to_a_field_that_does_not_exist_is_refused():
         assert r.status_code == 400 and path in r.json()["error"]
 
 
+def test_an_edit_the_part_cannot_hold_is_left_out_with_a_warning():
+    """A field the feature does not have, or a feature the part no longer has (features renumber when a rejected
+    face changes the pockets), is left out and said so: never written into a feature, never silently dropped, and
+    never a refusal that would leave the Review screen stuck on a value it no longer shows."""
+    job = analyze()
+    sizes = {"envelope.x_mm": 50, "envelope.y_mm": 30, "envelope.z_mm": 20}
+    feats = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": sizes}).json()["spec"]["features"]
+    assert feats and feats[0]["type"] == "hole", feats
+    for path in ("features[0].length_mm", "features[99].a_mm", "features[99].keep"):
+        r = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": {**sizes, path: 5}})
+        spec = r.json()["spec"]
+        assert r.status_code == 200 and spec, (path, r.text)
+        assert any(path in w for w in spec["warnings"]) and "length_mm" not in spec["features"][0], path
+    r = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": {**sizes, "features[0].diameter_mm": 5}})
+    assert r.status_code == 200 and r.json()["spec"]["features"][0]["diameter_mm"] == 5
+
+
 def test_an_analysis_shows_in_the_metrics():
     analyze()
     text = c.get("/api/metrics").text
