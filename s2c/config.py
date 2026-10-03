@@ -9,7 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
-PROJECT = Path(__file__).resolve().parents[1]
+HERE = Path(__file__).resolve().parent
+PROJECT = HERE.parent
 
 
 @dataclass(frozen=True)
@@ -104,14 +105,34 @@ def problems(env: Mapping[str, str] | None = None) -> list[str]:
     return found
 
 
+def dotenv_path() -> Path | None:
+    """The one .env of the app: the first found going up from this package. The search never starts in the working
+    directory, so a value read at import (S2C_DATA_DIR, S2C_MAX_PIXELS) and one read later agree wherever the app
+    is started from."""
+    for folder in (HERE, *HERE.parents):
+        if (folder / ".env").is_file():
+            return folder / ".env"
+    return None
+
+
+def load_env() -> None:
+    """That .env into the environment, for every entry point (values already set win)."""
+    path = dotenv_path()
+    if path is not None:
+        from dotenv import load_dotenv
+        load_dotenv(path)
+
+
 def setting(name: str, default: str) -> str:
-    """A value from the environment, else from the .env file: for what is read at import, before the app loads
-    .env."""
+    """A value from the environment, else from the app's .env: for what is read at import, before load_env."""
     if name in os.environ:
         return os.environ[name]
+    path = dotenv_path()
+    if path is None:
+        return default
     try:
-        from dotenv import dotenv_values, find_dotenv
-        return dotenv_values(find_dotenv(usecwd=True)).get(name) or default
+        from dotenv import dotenv_values
+        return dotenv_values(path).get(name) or default
     except Exception:  # noqa: BLE001 - an unreadable .env leaves the default
         return default
 

@@ -302,8 +302,7 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
 
 
 def launch() -> None:
-    from dotenv import load_dotenv
-    load_dotenv()
+    config.load_env()
     obs.configure_logging()
     found = config.problems()
     if found:

@@ -5,14 +5,13 @@
 import argparse
 from pathlib import Path
 
-from dotenv import load_dotenv
-
+from s2c.config import load_env
 from s2c.multiview.pipeline import ImageInput, MvPipeline, default_pipeline
 from s2c.multiview.spec import MvAbstain
 
 
 def main() -> None:
-    load_dotenv()
+    load_env()
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--image", action="append", required=True,
                     help="PATH[@FACE[@KIND]]; FACE front|back|left|right|top|bottom, KIND sketch|photo|drawing")

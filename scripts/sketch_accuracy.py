@@ -7,8 +7,7 @@ import sys
 import time
 from pathlib import Path
 
-from dotenv import load_dotenv
-
+from s2c.config import load_env
 from s2c.sketch.pipeline import analyse
 
 
@@ -73,7 +72,7 @@ def score(reading, trace, expected: dict) -> dict:
 
 
 def main(folders: list[Path]) -> None:
-    load_dotenv()
+    load_env()
     rows, total = [], {}
     for folder in folders:
         image = next((p for p in folder.iterdir() if p.suffix.lower() in (".jpg", ".jpeg", ".png")), None)

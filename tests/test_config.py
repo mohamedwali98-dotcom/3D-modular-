@@ -91,8 +91,6 @@ def test_a_choice_the_check_accepts_is_the_choice_the_code_makes(monkeypatch):
 
 
 def test_the_gradio_apps_may_serve_files_from_the_data_folder(monkeypatch, tmp_path):
-    import dotenv
-
     import app_mv_gradio as lab
     from s2c.studio import app as studio
 
@@ -106,13 +104,40 @@ def test_the_gradio_apps_may_serve_files_from_the_data_folder(monkeypatch, tmp_p
             calls.append(kwargs)
 
     monkeypatch.setenv("S2C_DATA_DIR", str(tmp_path))
-    monkeypatch.setattr(dotenv, "load_dotenv", lambda *a, **k: None)
+    monkeypatch.setattr(config, "load_env", lambda: None)
     monkeypatch.setattr(studio.obs, "configure_logging", lambda *a, **k: None)
     monkeypatch.setattr(studio.config, "problems", lambda *a: [])
     monkeypatch.setattr(studio, "build_app", lambda *a: Fake())
     studio.launch()
-    monkeypatch.setattr(lab, "load_dotenv", lambda *a, **k: None)
     monkeypatch.setattr(lab, "build_app", lambda *a: Fake())
     monkeypatch.setattr(lab, "default_pipeline", lambda: None)
     lab.main()
     assert [c.get("allowed_paths") for c in calls] == [[str(tmp_path)], [str(tmp_path)]]
+
+
+def test_import_time_and_runtime_settings_come_from_the_same_env(tmp_path, monkeypatch):
+    """The .env read at import (S2C_DATA_DIR, S2C_MAX_PIXELS) is the one the entry points load, wherever the app is
+    started from: the first one up from the package, never the working directory's."""
+    import os
+
+    project, elsewhere = tmp_path / "project", tmp_path / "elsewhere"
+    (project / "s2c").mkdir(parents=True)
+    elsewhere.mkdir()
+    (project / ".env").write_text("S2C_DATA_DIR=from-project\nS2C_TEST_SENTINEL=loaded\n", encoding="utf-8")
+    (elsewhere / ".env").write_text("S2C_DATA_DIR=from-cwd\n", encoding="utf-8")
+    monkeypatch.setattr(config, "HERE", project / "s2c")
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.delenv("S2C_DATA_DIR", raising=False)
+    assert config.dotenv_path() == project / ".env"
+    assert config.setting("S2C_DATA_DIR", "") == "from-project"
+    try:
+        config.load_env()
+        assert os.environ.get("S2C_TEST_SENTINEL") == "loaded"
+    finally:
+        os.environ.pop("S2C_TEST_SENTINEL", None)
+        os.environ.pop("S2C_DATA_DIR", None)
+
+
+def test_every_entry_point_loads_the_env_through_config():
+    entry = [*(ROOT / "s2c").rglob("*.py"), *(ROOT / "scripts").glob("*.py"), *ROOT.glob("app_*.py")]
+    assert [p.name for p in entry if "load_dotenv(" in p.read_text(encoding="utf-8") and p.name != "config.py"] == []

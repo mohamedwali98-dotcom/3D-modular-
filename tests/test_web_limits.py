@@ -71,10 +71,13 @@ def test_importing_cv2_before_s2c_is_warned_about():
     assert "OPENCV_IO_MAX_IMAGE_PIXELS" not in _python("import s2c, cv2").stderr
 
 
-def test_the_cap_is_s2c_max_pixels_from_the_environment_or_dot_env(tmp_path):
+def test_the_cap_is_s2c_max_pixels_and_a_working_folder_env_is_not_the_apps(tmp_path):
+    """S2C_MAX_PIXELS from the environment sets OpenCV's cap. A .env in the folder the app is started from is not
+    the app's .env (config.dotenv_path, tested in test_config.py): it changes nothing."""
     (tmp_path / ".env").write_text("S2C_MAX_PIXELS=1000\n", encoding="utf-8")
     code = "import os, s2c; print(s2c.MAX_PIXELS, os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'])"
-    assert _python(code, cwd=tmp_path, OPENCV_IO_MAX_IMAGE_PIXELS="999999999999").stdout.split() == ["1000", "1000"]
+    out = _python(code, cwd=tmp_path, S2C_MAX_PIXELS="2000", OPENCV_IO_MAX_IMAGE_PIXELS="999999999999")
+    assert out.stdout.split() == ["2000", "2000"], out.stderr
 
 
 def test_the_pipeline_is_built_once_however_many_requests_race(monkeypatch):

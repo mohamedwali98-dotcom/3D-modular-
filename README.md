@@ -113,7 +113,7 @@ uv run python app_mv_studio.py                # the Studio on :7860
 uv run python app_mv_gradio.py                # the simple lab app
 ```
 
-Without any model keys the app still runs end to end: the offline path traces the outlines, skips reading, and asks you to type the overall size on the Review screen. `GET /api/status` shows which providers are configured.
+Without any model keys the app still runs end to end: the offline path traces the outlines, skips reading, and asks you to type the overall size on the Review screen. `GET /api/status` shows which providers are configured, and `GET /api/metrics` serves counters and timings in the Prometheus text format (analyses by outcome, time per stage, fallbacks, refusals) behind the same token.
 
 The vision model is chosen by three environment variables: `VLM_BASE_URL`, `VLM_MODEL`, `VLM_API_KEY`. Any OpenAI-compatible endpoint works. The table in `docs/models.md` lists NVIDIA Build, Gemini, Groq and Ollama presets.
 
@@ -202,7 +202,7 @@ Reference-part benchmark:
 
 - Images are processed in memory on this server. Analyses keep their silhouettes in memory for an hour after their last use; the photos themselves only until a part exists, and only while Qwen-Image or TripoSR (which work from them) is on. Built parts and exported files live in a temp folder for an hour after their last use. The Studio also keeps a sketch's cleaned page for its session.
 - Images leave the server only for the services you use: the vision model set in `.env` (labels and handwriting), and, when you turn them on, Qwen-Image (drawing missing faces, rescuing a sketch), TripoSR (a hosted Space when no local GPU runs it) and Solaria (hole depth). Those four are off by default.
-- Call logs (`S2C_LOG_DIR`, default `logs/`) record provider, model, latency and tokens, never the images.
+- Call logs (`S2C_LOG_DIR`, default `<S2C_DATA_DIR>/logs`) record provider, model, latency and tokens, never the images.
 - The user sees and can edit every number before export. Each value carries a badge saying where it came from: measured, written, edited, or a default guess.
 - No model output is ever executed.
 - Models, providers and tools are listed in `docs/disclosure.md`.

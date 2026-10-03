@@ -7,7 +7,6 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -17,7 +16,7 @@ from s2c.web.api import get_pipeline, install_error_handlers
 from s2c.web.api import router as api_router
 from s2c.web.guard import access_token, install_guards
 
-load_dotenv()
+config.load_env()
 obs.configure_logging()
 if access_token() is None:
     logging.getLogger(__name__).warning("S2C_ACCESS_TOKEN is not set: /api answers this computer only")
