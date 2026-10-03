@@ -78,6 +78,8 @@ def test_the_cap_is_s2c_max_pixels_and_a_working_folder_env_is_not_the_apps(tmp_
     code = "import os, s2c; print(s2c.MAX_PIXELS, os.environ['OPENCV_IO_MAX_IMAGE_PIXELS'])"
     out = _python(code, cwd=tmp_path, S2C_MAX_PIXELS="2000", OPENCV_IO_MAX_IMAGE_PIXELS="999999999999")
     assert out.stdout.split() == ["2000", "2000"], out.stderr
+    cap, opencv = _python(code, cwd=tmp_path, OPENCV_IO_MAX_IMAGE_PIXELS="999999999999").stdout.split()
+    assert cap == opencv and cap != "1000"  # the working folder's .env was not read
 
 
 def test_the_pipeline_is_built_once_however_many_requests_race(monkeypatch):

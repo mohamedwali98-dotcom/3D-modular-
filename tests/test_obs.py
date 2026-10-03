@@ -152,3 +152,45 @@ def test_an_operators_own_root_handler_is_kept_and_gets_the_job_id():
     finally:
         root.handlers = saved
     assert out.getvalue().strip() == "j7 hello"
+
+
+def test_an_operators_own_s2c_level_is_kept(monkeypatch):
+    root, ours = logging.getLogger(), logging.getLogger("s2c")
+    saved, level = root.handlers[:], ours.level
+    monkeypatch.delenv("S2C_LOG_LEVEL", raising=False)
+    root.handlers = [logging.StreamHandler(io.StringIO())]
+    ours.setLevel(logging.WARNING)
+    try:
+        obs.configure_logging()
+        assert ours.level == logging.WARNING
+    finally:
+        root.handlers = saved
+        ours.setLevel(level)
+
+
+def test_one_name_is_one_kind_of_metric():
+    obs.reset()
+    obs.count("s2c_mixed_total")
+    with pytest.raises(ValueError):
+        obs.time_spent("s2c_mixed_total", 1.0)
+
+
+def test_a_record_after_the_analysis_has_no_id(stream):
+    from s2c.multiview import hf3d
+
+    def say(message):
+        logging.getLogger("s2c.test").warning(message)
+
+    with obs.job_scope("job9"):
+        hf3d._pool.submit(obs.carry(say), "carried").result()
+    hf3d._pool.submit(say, "plain on the same worker").result()
+    say("after, same thread")
+    records = {r["message"]: r.get("job_id") for r in map(json.loads, stream.getvalue().strip().splitlines())}
+    assert records["carried"] == "job9"
+    assert records["plain on the same worker"] is None and records["after, same thread"] is None
+
+
+def test_label_values_are_escaped():
+    obs.reset()
+    obs.count("s2c_fallbacks_total", name='a"b\\c\nd')
+    assert 's2c_fallbacks_total{name="a\\"b\\\\c\\nd"} 1' in obs.render()

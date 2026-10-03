@@ -2,6 +2,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 from s2c import config
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +113,7 @@ def test_the_gradio_apps_may_serve_files_from_the_data_folder(monkeypatch, tmp_p
     studio.launch()
     monkeypatch.setattr(lab, "build_app", lambda *a: Fake())
     monkeypatch.setattr(lab, "default_pipeline", lambda: None)
+    monkeypatch.setattr(config, "dotenv_path", lambda: pytest.fail("the test loaded the real .env"))
     lab.main()
     assert [c.get("allowed_paths") for c in calls] == [[str(tmp_path)], [str(tmp_path)]]
 
@@ -141,3 +144,14 @@ def test_import_time_and_runtime_settings_come_from_the_same_env(tmp_path, monke
 def test_every_entry_point_loads_the_env_through_config():
     entry = [*(ROOT / "s2c").rglob("*.py"), *(ROOT / "scripts").glob("*.py"), *ROOT.glob("app_*.py")]
     assert [p.name for p in entry if "load_dotenv(" in p.read_text(encoding="utf-8") and p.name != "config.py"] == []
+
+
+def test_the_env_search_stops_at_the_project(tmp_path, monkeypatch):
+    """A checkout without its own .env never picks up a parent folder's (another project's, or the home folder's)."""
+    project = tmp_path / "project"
+    (project / "s2c").mkdir(parents=True)
+    (project / "pyproject.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
+    (tmp_path / ".env").write_text("S2C_DATA_DIR=foreign\n", encoding="utf-8")
+    monkeypatch.setattr(config, "HERE", project / "s2c")
+    monkeypatch.setattr(config, "PROJECT", project)
+    assert config.dotenv_path() is None

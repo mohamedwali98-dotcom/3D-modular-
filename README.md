@@ -113,7 +113,7 @@ uv run python app_mv_studio.py                # the Studio on :7860
 uv run python app_mv_gradio.py                # the simple lab app
 ```
 
-Without any model keys the app still runs end to end: the offline path traces the outlines, skips reading, and asks you to type the overall size on the Review screen. `GET /api/status` shows which providers are configured, and `GET /api/metrics` serves counters and timings in the Prometheus text format (analyses by outcome, time per stage, fallbacks, refusals) behind the same token.
+Without any model keys the app still runs end to end: the offline path traces the outlines, skips reading, and asks you to type the overall size on the Review screen. `GET /api/status` shows which providers are configured, and `GET /api/metrics` serves counters and timings in the Prometheus text format (analyses by outcome, time per stage, fallbacks, refusals) behind the same token. Logs are JSON lines carrying the analysis id (`S2C_LOG_FORMAT=text` for plain lines); with your own logging config (`uvicorn --log-config`), yours is kept, and `%(job_id)s` in its format shows the analysis id.
 
 The vision model is chosen by three environment variables: `VLM_BASE_URL`, `VLM_MODEL`, `VLM_API_KEY`. Any OpenAI-compatible endpoint works. The table in `docs/models.md` lists NVIDIA Build, Gemini, Groq and Ollama presets.
 

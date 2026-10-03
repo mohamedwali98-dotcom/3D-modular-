@@ -112,6 +112,8 @@ def dotenv_path() -> Path | None:
     for folder in (HERE, *HERE.parents):
         if (folder / ".env").is_file():
             return folder / ".env"
+        if folder == PROJECT and (PROJECT / "pyproject.toml").is_file():
+            return None  # a checkout without its own .env never takes a parent folder's
     return None
 
 

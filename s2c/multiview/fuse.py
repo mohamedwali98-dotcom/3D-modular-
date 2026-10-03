@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from s2c.multiview import spec as S
+from s2c.multiview.edits import left_out
 from s2c.multiview.ocr import Linked, Reading
 from s2c.multiview.outline import PixelOutline, to_face_mm
 from s2c.multiview.raster import iou, outline_mask
@@ -622,7 +623,9 @@ def assemble(env: S.Envelope, env_prov: dict, outlines: dict, feats: list[dict],
         if feature is None or (name != "keep" and (name not in feature or name in ("type", "face"))):
             # an edit past the list or onto a feature without that field is said, never applied (the web app also
             # drops typed feature values when the rejected faces change, since that can renumber the features)
-            data["warnings"].append(f"A value you typed ({path}) was left out: this part has no such value now.")
+            warning = left_out(name, feature is not None)
+            if warning not in data["warnings"]:
+                data["warnings"].append(warning)
             continue
         if name == "keep":  # the user took a misread feature out: "features[k].keep" = 0
             if not value:

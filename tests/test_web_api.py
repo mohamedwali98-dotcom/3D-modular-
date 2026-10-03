@@ -568,11 +568,15 @@ def test_an_edit_the_part_cannot_hold_is_left_out_with_a_warning():
     sizes = {"envelope.x_mm": 50, "envelope.y_mm": 30, "envelope.z_mm": 20}
     feats = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": sizes}).json()["spec"]["features"]
     assert feats and feats[0]["type"] == "hole", feats
-    for path in ("features[0].length_mm", "features[99].a_mm", "features[99].keep"):
+    said = {"features[0].length_mm": "A length you typed was left out: that feature has none.",
+            "features[99].a_mm": "A position you typed was left out: that feature is no longer on this part.",
+            "features[99].keep": "A feature you took out is no longer on this part."}
+    for path, sentence in said.items():
         r = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": {**sizes, path: 5}})
         spec = r.json()["spec"]
         assert r.status_code == 200 and spec, (path, r.text)
-        assert any(path in w for w in spec["warnings"]) and "length_mm" not in spec["features"][0], path
+        assert sentence in spec["warnings"] and "length_mm" not in spec["features"][0], (path, spec["warnings"])
+        assert not any("features[" in w for w in spec["warnings"])
     r = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": {**sizes, "features[0].diameter_mm": 5}})
     assert r.status_code == 200 and r.json()["spec"]["features"][0]["diameter_mm"] == 5
 

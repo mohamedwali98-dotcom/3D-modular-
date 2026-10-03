@@ -21,6 +21,7 @@ _HANDLER = "s2c"
 _lock = threading.Lock()
 _counts: dict[tuple[str, tuple], float] = {}
 _sums: dict[tuple[str, tuple], list] = {}
+_kinds: dict[str, str] = {}  # metric name -> counter or summary: one name is one kind
 
 
 class _JobFilter(logging.Filter):
@@ -45,7 +46,6 @@ def configure_logging(stream=None, force: bool = False) -> logging.Handler:
     an operator's config already gave root a handler (uvicorn --log-config, dictConfig), theirs wins: ours is not
     added, so no line prints twice, and theirs gets the job id."""
     root = logging.getLogger()
-    _set_level()
     existing = next((h for h in root.handlers if h.get_name() == _HANDLER), None)
     if existing is not None and not force:
         return existing
@@ -55,7 +55,10 @@ def configure_logging(stream=None, force: bool = False) -> logging.Handler:
         for theirs in root.handlers:
             if not any(isinstance(f, _JobFilter) for f in theirs.filters):
                 theirs.addFilter(_JobFilter())
+        if "S2C_LOG_LEVEL" in os.environ or logging.getLogger("s2c").level == logging.NOTSET:
+            _set_level()  # their config's own s2c level wins unless S2C_LOG_LEVEL says otherwise
         return root.handlers[0]
+    _set_level()
     handler = logging.StreamHandler(stream or sys.stderr)
     handler.set_name(_HANDLER)
     handler.addFilter(_JobFilter())
@@ -93,14 +96,21 @@ def _key(labels: dict) -> tuple:
     return tuple(sorted((k, str(v)) for k, v in labels.items()))
 
 
+def _kind(metric: str, kind: str) -> None:
+    if _kinds.setdefault(metric, kind) != kind:
+        raise ValueError(f"{metric} is a {_kinds[metric]}, not a {kind}")
+
+
 def count(metric: str, /, **labels) -> None:
     with _lock:
+        _kind(metric, "counter")
         key = (metric, _key(labels))
         _counts[key] = _counts.get(key, 0) + 1
 
 
 def time_spent(metric: str, seconds: float, /, **labels) -> None:
     with _lock:
+        _kind(metric, "summary")
         total = _sums.setdefault((metric, _key(labels)), [0.0, 0])
         total[0] += seconds
         total[1] += 1
@@ -113,8 +123,12 @@ def fallback(name: str, exc: BaseException) -> None:
     count("s2c_fallbacks_total", name=name)
 
 
+def _escape(value: str) -> str:
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+
+
 def _labels(key: tuple) -> str:
-    return "{" + ",".join(f'{k}="{v}"' for k, v in key) + "}" if key else ""
+    return "{" + ",".join(f'{k}="{_escape(v)}"' for k, v in key) + "}" if key else ""
 
 
 def _number(value: float) -> str:
@@ -144,3 +158,4 @@ def reset() -> None:
     with _lock:
         _counts.clear()
         _sums.clear()
+        _kinds.clear()

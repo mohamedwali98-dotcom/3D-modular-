@@ -13,6 +13,19 @@ FIELDS = frozenset({name for model in (FaceHole, FaceSlot, FacePocket, FaceBoss)
                     if name not in ("type", "face")} | {"keep"})
 
 
+FIELD_WORDS = {"a_mm": "position", "b_mm": "position", "diameter_mm": "diameter", "depth_mm": "depth",
+               "width_mm": "width", "length_mm": "length", "angle_deg": "angle", "height_mm": "height"}
+
+
+def left_out(name: str, feature_exists: bool) -> str:
+    """What the Review screen says about an edit the part cannot hold, in its own words (no internal path)."""
+    if name == "keep":
+        return "A feature you took out is no longer on this part."
+    what = FIELD_WORDS.get(name, "value")
+    why = "that feature has none." if feature_exists else "that feature is no longer on this part."
+    return f"{'An' if what[0] in 'aeiou' else 'A'} {what} you typed was left out: {why}"
+
+
 class EditError(ValueError):
     def __init__(self, path: str):
         super().__init__(f"{path} cannot be edited")

@@ -42,3 +42,7 @@ def test_the_readme_says_what_the_lock_installs_for_triposr():
 def test_the_readme_names_the_metrics_and_the_log_folder():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "/api/metrics" in readme and "default `<S2C_DATA_DIR>/logs`" in readme
+
+
+def test_the_readme_tells_an_operator_how_to_keep_the_job_id():
+    assert "%(job_id)s" in (ROOT / "README.md").read_text(encoding="utf-8")
