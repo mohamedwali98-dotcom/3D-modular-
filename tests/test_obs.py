@@ -65,5 +65,48 @@ def test_provider_fallbacks_are_counted_where_they_happen(monkeypatch):
         hf3d.default_provider()(np.zeros((8, 8, 3), np.uint8))
     ReadingService([Broken()]).read([Crop(np.zeros((20, 30, 3), np.uint8), (0, 0, 30, 20))])
     text = obs.render()
-    assert 's2c_fallbacks_total{name="triposr_local"} 1' in text and 's2c_fallbacks_total{name="triposr_space"} 1' in text
+    assert 's2c_fallbacks_total{name="triposr_local"} 1' in text and "triposr_space" not in text  # the caller counts it
     assert 's2c_fallbacks_total{name="reader_qwen"} 1' in text
+
+
+def test_each_metric_family_says_its_type_once_before_its_lines():
+    obs.reset()
+    obs.count("s2c_jobs_total", mode="photos", outcome="done")
+    obs.count("s2c_jobs_total", mode="sheet", outcome="done")
+    obs.time_spent("s2c_stage_seconds", 1.0, stage="fuse")
+    lines = obs.render().splitlines()
+    assert lines.count("# TYPE s2c_jobs_total counter") == 1 and lines.count("# TYPE s2c_stage_seconds summary") == 1
+    assert lines.index("# TYPE s2c_jobs_total counter") < lines.index('s2c_jobs_total{mode="photos",outcome="done"} 1')
+    assert lines.index("# TYPE s2c_stage_seconds summary") < lines.index('s2c_stage_seconds_sum{stage="fuse"} 1')
+
+
+def test_a_reader_out_of_time_and_trocr_leaving_the_gpu_are_counted(monkeypatch):
+    import time
+
+    import numpy as np
+
+    from s2c.reading import Crop, ReaderResult, ReadingService, trocr
+
+    class Slow:
+        name, timeout_s = "qwen", 0.1
+
+        def read(self, crops):
+            time.sleep(0.5)
+            return [ReaderResult(text="1", confidence=1.0) for _ in crops]
+
+    obs.reset()
+    crop = Crop(np.zeros((20, 30, 3), np.uint8), (0, 0, 30, 20))
+    ReadingService([Slow()]).read([crop])
+    reader = trocr.TrocrReader.__new__(trocr.TrocrReader)
+    reader.model_id, reader.device = "m", "cuda"
+
+    def load(model_id, device):
+        if device == "cuda":
+            raise RuntimeError("CUDA out of memory")
+        return None, None
+
+    monkeypatch.setattr(trocr, "_load", load)
+    monkeypatch.setattr(trocr.TrocrReader, "_batched", lambda self, p, m, d, crops: [])
+    reader.read([crop])
+    text = obs.render()
+    assert 's2c_fallbacks_total{name="reader_qwen_timeout"} 1' in text and 's2c_fallbacks_total{name="trocr_gpu"} 1' in text

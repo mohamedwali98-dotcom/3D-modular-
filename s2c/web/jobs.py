@@ -78,6 +78,8 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
     pipe: MvPipeline | None = None  # the pipeline configured with this request's AI settings; merge reuses it
     mode: str = "photos"  # "photos" (per-face) or "sheet" (one sheet, all views)
+    # (stage key, image index) -> when that run started: label, outline and read run once per image
+    stage_clock: dict = field(default_factory=dict, repr=False)
 
     def stage(self, key: str) -> dict:
         return next(s for s in self.stages if s["key"] == key)
@@ -225,6 +227,7 @@ def reduce(job: Job, name: str, data: dict) -> None:
         index = data.get("index")
         image = job.images[index] if index is not None and 0 <= index < len(job.images) else None
         if state == "running":
+            job.stage_clock[(key, index)] = now
             stage["state"] = "running"
             stage["started"] = stage["started"] or now
             stage["ended"] = None
@@ -240,7 +243,8 @@ def reduce(job: Job, name: str, data: dict) -> None:
             return
         stage.update(state="done", ended=now)
         stage["started"] = stage["started"] or now
-        obs.time_spent("s2c_stage_seconds", now - stage["started"], stage=key)
+        started = job.stage_clock.pop((key, index), stage["started"])  # this image's run, not the first image's
+        obs.time_spent("s2c_stage_seconds", now - started, stage=key)
         if key == "label" and image is not None:
             image.update(face=data.get("face"), kind=data.get("kind"), width=data.get("width", 0),
                          height=data.get("height", 0))

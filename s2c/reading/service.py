@@ -105,7 +105,7 @@ class ReadingService:
                 try:
                     runs.append(future.result(timeout=max(budget - (time.perf_counter() - t0), 0.0)))
                 except FutureTimeout:
-                    log.warning("reader %s ran out of time (%.1f s)", reader.name, budget)
+                    obs.fallback(f"reader_{reader.name}_timeout", TimeoutError(f"ran out of time ({budget:.1f} s)"))
                     runs.append(ReaderRun(reader.name, getattr(reader, "calibrated", False), None, "timeout", _ms(t0)))
         finally:
             pool.shutdown(wait=False, cancel_futures=True)  # a hung reader must not hold the request

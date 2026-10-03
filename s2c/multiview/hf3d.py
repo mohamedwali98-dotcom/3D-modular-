@@ -136,7 +136,10 @@ def default_provider():
             try:
                 return fn(image_bgr)
             except Exception as e:  # noqa: BLE001 - a failed provider falls back, never breaks the request
-                obs.fallback(f"triposr_{name}", e)
+                if name == "local":
+                    obs.fallback("triposr_local", e)  # the Space is tried next
+                else:
+                    log.warning("TripoSR %s failed: %s", name, e)  # the caller counts the whole fallback
                 errors.append(f"{name}: {e}")
         raise RuntimeError("; ".join(errors))
     return provide

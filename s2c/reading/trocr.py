@@ -10,6 +10,7 @@ import threading
 import cv2
 import numpy as np
 
+from s2c import obs
 from s2c.reading.base import Crop, ReaderResult
 
 log = logging.getLogger(__name__)
@@ -123,7 +124,8 @@ class TrocrReader:
         except Exception as e:
             if device != "cuda" or not _is_oom(e):
                 raise
-            log.warning("TrOCR ran out of GPU memory (%s); moving to CPU for the rest of the process", e)
+            obs.fallback("trocr_gpu", e)
+            log.warning("TrOCR moves to the CPU for the rest of the process")
             self.device = "cpu"  # only ever moves towards cpu, for every later read on this reader
             processor, model = _load(self.model_id, "cpu")
             return self._batched(processor, model, "cpu", crops)

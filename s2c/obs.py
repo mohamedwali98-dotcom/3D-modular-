@@ -104,10 +104,20 @@ def _number(value: float) -> str:
 
 
 def render() -> str:
-    """Every counter and timing, in the Prometheus text format."""
+    """Every counter and timing, in the Prometheus text format: each family's # TYPE line, then its series."""
+    lines, typed = [], set()
+
+    def family(name: str, kind: str) -> None:
+        if name not in typed:
+            typed.add(name)
+            lines.append(f"# TYPE {name} {kind}")
+
     with _lock:
-        lines = [f"{name}{_labels(key)} {_number(v)}" for (name, key), v in sorted(_counts.items())]
+        for (name, key), v in sorted(_counts.items()):
+            family(name, "counter")
+            lines.append(f"{name}{_labels(key)} {_number(v)}")
         for (name, key), (total, n) in sorted(_sums.items()):
+            family(name, "summary")
             lines += [f"{name}_sum{_labels(key)} {_number(total)}", f"{name}_count{_labels(key)} {n}"]
     return "\n".join(lines) + "\n"
 

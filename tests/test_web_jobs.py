@@ -95,3 +95,16 @@ def test_the_budget_ignores_a_jump_of_the_wall_clock():
     job = jobs.new_job(1, MvPipeline(), register=False)
     job.created -= 10 * jobs.JOB_BUDGET_S  # the system clock jumped forward (NTP)
     jobs._check(job, {"key": "draw", "state": "running"})
+
+
+def test_a_per_image_stage_is_timed_from_its_own_image(monkeypatch):
+    """label runs once per image: image 1's sample starts at image 1's start, not image 0's."""
+    from s2c import obs
+    obs.reset()
+    job = jobs.new_job(2, MvPipeline(), register=False)
+    clock = iter([100.0, 101.0, 101.0, 103.0])
+    monkeypatch.setattr(jobs.time, "time", lambda: next(clock))
+    for index, state in ((0, "running"), (0, "done"), (1, "running"), (1, "done")):
+        jobs.reduce(job, "stage", {"key": "label", "state": state, "index": index})
+    text = obs.render()
+    assert 's2c_stage_seconds_sum{stage="label"} 3' in text and 's2c_stage_seconds_count{stage="label"} 2' in text
