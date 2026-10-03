@@ -12,7 +12,7 @@ const spec: Spec = {
     top: { outer: rect(60, 5), inner: [], source: 'observed', confidence: 1 },
     right: { outer: rect(5, 40), inner: [], source: 'observed', confidence: 1 },
   },
-  features: [{ type: 'hole', face: 'front', a_mm: 10, b_mm: 30, diameter_mm: 6 }],
+  features: [{ type: 'hole', face: 'front', a_mm: 10, b_mm: 30, diameter_mm: 6, depth_mm: null }],
   finishes: [], provenance: {}, snapped: [], warnings: [], confidence: 1,
 };
 
