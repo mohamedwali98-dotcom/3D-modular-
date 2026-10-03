@@ -26,6 +26,14 @@ describe('store', () => {
     expect(s.analysis?.request_id).toBe('j2');
   });
 
+  it('forgets typed feature values when the rejected faces change, and keeps the typed sizes', () => {
+    // features are numbered per fuse: a reject can renumber them, so features[1] may name another feature next time
+    let s: State = { ...initialState, typed: { 'envelope.x_mm': 50, 'features[1].diameter_mm': 6, 'features[2].keep': 0 } };
+    s = reducer(s, { type: 'TOGGLE_REJECT', face: 'right' });
+    expect(s.rejected).toEqual(['right']);
+    expect(s.typed).toEqual({ 'envelope.x_mm': 50 });
+  });
+
   it('remembers the spec a model was built from', () => {
     const spec = { version: 'mv1' } as Spec;
     const model = { key: 'k' } as ModelResult;

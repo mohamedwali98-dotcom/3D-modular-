@@ -119,6 +119,9 @@ export function reducer(state: State, action: Action): State {
       return {
         ...state,
         rejected: state.rejected.includes(action.face) ? state.rejected.filter((f) => f !== action.face) : [...state.rejected, action.face],
+        // features are numbered per fuse and a reject can renumber them: a typed features[k] value could land on
+        // another feature, so only the typed sizes survive the change
+        typed: Object.fromEntries(Object.entries(state.typed).filter(([path]) => !path.startsWith('features['))),
       };
     case 'SET_GEOMETRY':
       return { ...state, geometry: { ...state.geometry, ...action.patch } };
