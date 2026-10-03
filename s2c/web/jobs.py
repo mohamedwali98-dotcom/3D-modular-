@@ -531,6 +531,7 @@ def merge(job: Job, pipe: MvPipeline, user_values: dict, accepted: list, rejecte
     """Fuse again with the user's values, on the pipeline the job was configured with (its AI settings)."""
     pipe = job.pipe or pipe
     observed = job.observed
-    res = pipe.fuse(observed, user_values, accepted, rejected)
-    forget_images(observed, res, pipe)
-    return _analysis(job, res, observed.filled_by)
+    with obs.job_scope(job.job_id):
+        res = pipe.fuse(observed, user_values, accepted, rejected)
+        forget_images(observed, res, pipe)
+        return _analysis(job, res, observed.filled_by)

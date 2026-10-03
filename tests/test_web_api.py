@@ -581,3 +581,28 @@ def test_an_analysis_shows_in_the_metrics():
     analyze()
     text = c.get("/api/metrics").text
     assert 's2c_jobs_total{mode="photos",outcome=' in text and 's2c_stage_seconds_count{stage="outline"}' in text
+
+
+def test_merge_and_model_records_carry_the_analysis_id(monkeypatch):
+    import io
+    import logging
+
+    from s2c import obs
+    from s2c.web import api, jobs
+
+    out = io.StringIO()
+    handler = obs.configure_logging(stream=out, force=True)
+    try:
+        job = analyze()
+        say = logging.getLogger("s2c.test")
+        forget, build = jobs.forget_images, api.build_part
+        monkeypatch.setattr(jobs, "forget_images", lambda *a, **k: (say.warning("merging"), forget(*a, **k))[1])
+        monkeypatch.setattr(api, "build_part", lambda *a, **k: (say.warning("building"), build(*a, **k))[1])
+        sizes = {"envelope.x_mm": 50, "envelope.y_mm": 30, "envelope.z_mm": 20}
+        spec = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": sizes}).json()["spec"]
+        assert c.post("/api/model", json={"request_id": job["job_id"], "spec": spec}).status_code == 200
+    finally:
+        logging.getLogger().removeHandler(handler)
+    records = [json.loads(line) for line in out.getvalue().strip().splitlines()]
+    assert {r["message"]: r.get("job_id") for r in records if r["message"] in ("merging", "building")} == {
+        "merging": job["job_id"], "building": job["job_id"]}

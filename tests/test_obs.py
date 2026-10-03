@@ -110,3 +110,26 @@ def test_a_reader_out_of_time_and_trocr_leaving_the_gpu_are_counted(monkeypatch)
     reader.read([crop])
     text = obs.render()
     assert 's2c_fallbacks_total{name="reader_qwen_timeout"} 1' in text and 's2c_fallbacks_total{name="trocr_gpu"} 1' in text
+
+
+def test_work_handed_to_another_thread_keeps_the_analysis_id(stream):
+    import threading
+
+    import numpy as np
+
+    from s2c.reading import Crop, ReaderResult, ReadingService
+
+    class Talking:
+        name = "talking"
+
+        def read(self, crops):
+            logging.getLogger("s2c.test").warning("reading")
+            return [ReaderResult(text="1", confidence=1.0) for _ in crops]
+
+    with obs.job_scope("job42"):
+        ReadingService([Talking()]).read([Crop(np.zeros((20, 30, 3), np.uint8), (0, 0, 30, 20))])
+        carried = threading.Thread(target=obs.carry(lambda: logging.getLogger("s2c.test").warning("carried")))
+        carried.start()
+        carried.join()
+    records = [json.loads(line) for line in stream.getvalue().strip().splitlines()]
+    assert [r.get("job_id") for r in records if r["message"] in ("reading", "carried")] == ["job42", "job42"]

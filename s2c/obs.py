@@ -7,6 +7,7 @@ runs carries its `job_id`. Counters and timings live in this process and render 
 from __future__ import annotations
 
 import contextvars
+import functools
 import json
 import logging
 import os
@@ -62,13 +63,19 @@ def configure_logging(stream=None, force: bool = False) -> logging.Handler:
 
 
 @contextmanager
-def job_scope(job_id: str):
-    """Records logged inside carry this analysis's id."""
+def job_scope(job_id: str | None):
+    """Records logged inside carry this analysis's id (None: no analysis)."""
     token = _job_id.set(job_id)
     try:
         yield
     finally:
         _job_id.reset(token)
+
+
+def carry(fn):
+    """fn, for another thread, run inside a copy of this thread's context: its records keep the analysis id. One
+    copy per call, since a context runs on one thread at a time."""
+    return functools.partial(contextvars.copy_context().run, fn)
 
 
 def _key(labels: dict) -> tuple:

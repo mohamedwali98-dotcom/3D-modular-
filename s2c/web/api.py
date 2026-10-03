@@ -274,7 +274,8 @@ def _empty_model(abstain: MvAbstain) -> dict:
 
 @router.post("/model")
 def model(body: ModelBody) -> dict:
-    with build_slot():
+    job = jobs.get_job(body.request_id) if body.request_id and files.JOB_ID.match(body.request_id) else None
+    with obs.job_scope(job.job_id if job else None), build_slot():
         part = build_part(body.spec, body.geometry, ARTIFACT_ROOT)
     if isinstance(part, MvAbstain):
         return _empty_model(part)
@@ -285,7 +286,6 @@ def model(body: ModelBody) -> dict:
         if not path.exists():
             cv2.imwrite(str(path), mask)
         views[face] = f"{base}/{path.name}"
-    job = jobs.get_job(body.request_id) if body.request_id and files.JOB_ID.match(body.request_id) else None
     if job is not None:
         jobs.touch(job)
     masks = job.observed.masks if job is not None and job.observed is not None else {}

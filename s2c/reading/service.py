@@ -99,7 +99,7 @@ class ReadingService:
         runs: list[ReaderRun] = []
         t0 = time.perf_counter()
         try:
-            futures = [pool.submit(self._run_one, r, crops, keys) for r in self.readers]
+            futures = [pool.submit(obs.carry(self._run_one), r, crops, keys) for r in self.readers]
             for reader, future in zip(self.readers, futures):
                 budget = getattr(reader, "timeout_s", DEFAULT_TIMEOUT_S)
                 try:

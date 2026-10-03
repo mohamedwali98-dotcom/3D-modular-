@@ -107,7 +107,7 @@ def _local_run(image_bgr: np.ndarray) -> Mesh:
 
 def local_triposr(image_bgr: np.ndarray) -> Mesh:
     _local_model()  # loads outside the timeout: the first call downloads the weights
-    return _pool.submit(_local_run, image_bgr).result(timeout=LOCAL_TIMEOUT_S)
+    return _pool.submit(obs.carry(_local_run), image_bgr).result(timeout=LOCAL_TIMEOUT_S)
 
 
 def space_triposr(image_bgr: np.ndarray) -> Mesh:
@@ -125,7 +125,7 @@ def space_triposr(image_bgr: np.ndarray) -> Mesh:
             return _to_mesh(trimesh.load(path, force="mesh"))
 
     with cf.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(run).result(timeout=SPACE_TIMEOUT_S)
+        return pool.submit(obs.carry(run)).result(timeout=SPACE_TIMEOUT_S)
 
 
 def default_provider():
