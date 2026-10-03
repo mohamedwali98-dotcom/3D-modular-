@@ -175,6 +175,7 @@ def test_a_two_view_cone_builds_as_a_cone(tmp_path):
     assert isinstance(spec, S.MultiViewSpec)
     assert spec.features == []
     assert spec.views.top.source == "inferred" and spec.provenance["views.top.outer"] == "inferred"
+    assert observed.filled_by["top"] == "inferred"  # the web app's FaceCard must know this value (web review C1)
     frustum = math.pi * L * (R ** 2 + R * r + r ** 2) / 3
     assert volume(build(spec)) == pytest.approx(frustum, rel=0.03)
     result = pipe.build(spec, tmp_path, observed.masks)

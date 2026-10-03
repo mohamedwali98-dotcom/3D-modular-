@@ -1,14 +1,7 @@
 import type { FilledBy, Outline } from '../api/types';
+import { canReject, faceInfo } from '../lib/faces';
 
 const MONO = "'Geist Mono', monospace";
-
-export const FILLED_BY_INFO: Record<FilledBy, { badge: string; verb: string }> = {
-  observed: { badge: 'Observed', verb: 'Observed in your photo' },
-  'qwen-image': { badge: 'AI-drawn (Qwen-Image)', verb: 'Drawn by Qwen-Image' },
-  triposr: { badge: '3D fallback (TripoSR)', verb: 'Estimated by TripoSR' },
-  mirrored: { badge: 'Mirrored', verb: 'Mirrored from the opposite face' },
-  assumed: { badge: 'Assumed', verb: 'Assumed, no view of this face' },
-};
 
 export interface FaceCardProps {
   label: string; // 'FRONT' | 'TOP' | 'RIGHT'
@@ -28,7 +21,9 @@ function toPoints(pts: [number, number][], h: number): string {
 /** One face card in the Review screen: an SVG silhouette from the fused views, with a provenance badge. */
 export function FaceCard({ label, outline, width, height, filledBy, rejected, onToggleReject }: FaceCardProps) {
   const isAi = filledBy !== 'observed';
-  const info = FILLED_BY_INFO[filledBy];
+  const info = faceInfo(filledBy);
+  const rejectable = canReject(filledBy);
+  rejected = rejected && rejectable;  // a face rebuilt the same way whatever the user says is never shown as "not used"
   const w = width > 0 ? width : 1;
   const h = height > 0 ? height : 1;
   const pad = Math.max(w, h) * 0.12 || 1;
@@ -89,7 +84,7 @@ export function FaceCard({ label, outline, width, height, filledBy, rejected, on
           : 'From your sketch'}
       </div>
 
-      {isAi && (
+      {rejectable && (
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={onToggleReject} aria-pressed={rejected} style={{
             flex: 1, height: 40, borderRadius: 10, border: '1.5px solid var(--ai)',

@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Shell } from './components/Shell';
 import { buildNav } from './lib/nav';
 import { Analyzing } from './screens/Analyzing';
@@ -29,11 +30,13 @@ export function App() {
   };
   return (
     <Shell nav={buildNav(state)} onNav={onNav}>
-      {state.screen === 'capture' && <Capture />}
-      {state.screen === 'describe' && <Describe />}
-      {state.screen === 'analyzing' && <Analyzing />}
-      {state.screen === 'review' && <Review />}
-      {state.screen === 'model' && <Suspense fallback={<Loading />}><Model /></Suspense>}
+      <ErrorBoundary key={state.screen}>
+        {state.screen === 'capture' && <Capture />}
+        {state.screen === 'describe' && <Describe />}
+        {state.screen === 'analyzing' && <Analyzing />}
+        {state.screen === 'review' && <Review />}
+        {state.screen === 'model' && <Suspense fallback={<Loading />}><Model /></Suspense>}
+      </ErrorBoundary>
     </Shell>
   );
 }

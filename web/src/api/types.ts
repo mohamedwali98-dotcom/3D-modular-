@@ -12,7 +12,7 @@ export type Face = FaceHole['face'];
 export type Provenance = Spec['provenance'][string];
 export type StageKey = 'label' | 'outline' | 'read' | 'draw' | 'fuse' | 'views' | 'lines' | 'values';
 export type StageState = 'pending' | 'running' | 'done' | 'skipped' | 'failed';
-export type FilledBy = 'observed' | 'qwen-image' | 'triposr' | 'mirrored' | 'assumed';
+export type FilledBy = 'observed' | 'qwen-image' | 'triposr' | 'mirrored' | 'assumed' | 'inferred';
 
 export interface Status { providers: { vision: boolean; reader: boolean; qwen_image: boolean; triposr: boolean; solaria: boolean; slicer: boolean; blender: boolean }; ttl_s: number }
 export interface Example { name: string; url: string; face: Face; kind: 'sketch' | 'photo' | 'drawing' }
