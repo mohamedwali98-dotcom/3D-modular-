@@ -21,6 +21,7 @@ from uuid import uuid4
 import cadquery as cq
 import numpy as np
 
+from s2c.config import data_path
 from s2c.multiview import spec as S
 from s2c.multiview.blend import write_blend
 from s2c.multiview.build import BuildError, build, volume
@@ -32,7 +33,7 @@ from s2c.multiview.raster import face_mask, normalize_mask, solid_mesh
 from s2c.multiview.settings import FORMATS, GeometrySettings, MeshSettings, PrintSettings, settings_hash
 from s2c.multiview.slice import parse_gcode_stats, slice_solid
 
-ROOT = Path("tmp/mv_gradio")
+ROOT = data_path("tmp", "mv_gradio")
 TTL_S = 3600
 LRU_SIZE = 16
 _KEY_FIELDS = {"envelope", "views", "features", "finishes"}

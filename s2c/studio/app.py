@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import gradio as gr
 
-from s2c import obs
+from s2c import config, obs
 from s2c.multiview.pipeline import MvPipeline, default_pipeline
 from s2c.multiview.settings import (
     EDGE_LABELS,
@@ -305,4 +305,7 @@ def launch() -> None:
     from dotenv import load_dotenv
     load_dotenv()
     obs.configure_logging()
+    found = config.problems()
+    if found:
+        raise RuntimeError("Settings: " + "; ".join(found))
     build_app().queue(max_size=20, default_concurrency_limit=1).launch(theme=THEME, css=CSS, max_file_size="20mb")

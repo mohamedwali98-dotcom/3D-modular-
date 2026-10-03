@@ -13,11 +13,12 @@ import gradio as gr
 import numpy as np
 from dotenv import load_dotenv
 
+from s2c.config import data_path
 from s2c.multiview.pipeline import ImageInput, MvPipeline, Observed, default_pipeline
 from s2c.multiview.raster import outline_mask
 from s2c.multiview.spec import CANONICAL_FACES, CANONICAL_OF, FACES, MultiViewSpec, MvAbstain, face_size
 
-OUT_ROOT = Path("tmp/mv_gradio")
+OUT_ROOT = data_path("tmp", "mv_gradio")
 TTL_S = 3600  # built files and Gradio's upload cache live one hour, as docs/disclosure.md says
 FACE_CHOICES = ("auto", *FACES)
 KIND_CHOICES = ("auto", "sketch", "photo", "drawing")

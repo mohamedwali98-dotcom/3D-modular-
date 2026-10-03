@@ -12,7 +12,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from s2c import obs
+from s2c import config, obs
 from s2c.web.api import get_pipeline, install_error_handlers
 from s2c.web.api import router as api_router
 from s2c.web.guard import access_token, install_guards
@@ -29,6 +29,9 @@ ORIGINS += [o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "").split(",") 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    found = config.problems()
+    if found:  # a bad value stops the server here, by name, instead of failing a request later
+        raise RuntimeError("Settings: " + "; ".join(found))
     get_pipeline()  # the models load at startup, not on the first request
     yield
 

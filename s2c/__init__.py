@@ -6,16 +6,7 @@ import os
 import sys
 import warnings
 
-
-def _setting(name: str, default: str) -> str:
-    if name in os.environ:
-        return os.environ[name]
-    try:
-        from dotenv import dotenv_values, find_dotenv
-        return dotenv_values(find_dotenv(usecwd=True)).get(name) or default
-    except Exception:  # noqa: BLE001 - an unreadable .env leaves the default
-        return default
-
+from s2c.config import setting as _setting
 
 __version__ = "0.1.0"
 MAX_PIXELS = int(_setting("S2C_MAX_PIXELS", "40000000"))
