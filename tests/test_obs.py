@@ -133,3 +133,22 @@ def test_work_handed_to_another_thread_keeps_the_analysis_id(stream):
         carried.join()
     records = [json.loads(line) for line in stream.getvalue().strip().splitlines()]
     assert [r.get("job_id") for r in records if r["message"] in ("reading", "carried")] == ["job42", "job42"]
+
+
+def test_an_operators_own_root_handler_is_kept_and_gets_the_job_id():
+    """uvicorn --log-config (or any dictConfig) that gives root a handler wins: no second handler printing every
+    line twice, and its records still carry the analysis id."""
+    root = logging.getLogger()
+    saved = root.handlers[:]
+    out = io.StringIO()
+    theirs = logging.StreamHandler(out)
+    theirs.setFormatter(logging.Formatter("%(job_id)s %(message)s"))
+    root.handlers = [theirs]
+    try:
+        obs.configure_logging()
+        assert root.handlers == [theirs]
+        with obs.job_scope("j7"):
+            logging.getLogger("s2c.test").warning("hello")
+    finally:
+        root.handlers = saved
+    assert out.getvalue().strip() == "j7 hello"

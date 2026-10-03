@@ -41,13 +41,21 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging(stream=None, force: bool = False) -> logging.Handler:
-    """Our handler on the root logger, once (again with `force`). Uvicorn keeps its own loggers and handlers."""
+    """Our handler on the root logger, once (again with `force`). Uvicorn keeps its own loggers and handlers. When
+    an operator's config already gave root a handler (uvicorn --log-config, dictConfig), theirs wins: ours is not
+    added, so no line prints twice, and theirs gets the job id."""
     root = logging.getLogger()
+    _set_level()
     existing = next((h for h in root.handlers if h.get_name() == _HANDLER), None)
     if existing is not None and not force:
         return existing
     if existing is not None:
         root.removeHandler(existing)
+    if root.handlers and not force:
+        for theirs in root.handlers:
+            if not any(isinstance(f, _JobFilter) for f in theirs.filters):
+                theirs.addFilter(_JobFilter())
+        return root.handlers[0]
     handler = logging.StreamHandler(stream or sys.stderr)
     handler.set_name(_HANDLER)
     handler.addFilter(_JobFilter())
@@ -56,10 +64,13 @@ def configure_logging(stream=None, force: bool = False) -> logging.Handler:
     else:
         handler.setFormatter(JsonFormatter())
     root.addHandler(handler)
+    return handler
+
+
+def _set_level() -> None:
     level = os.environ.get("S2C_LOG_LEVEL", "INFO").strip().upper()
     # an unknown level is named by the startup check (s2c/config.py), which runs after this
     logging.getLogger("s2c").setLevel(level if level in logging.getLevelNamesMapping() else "INFO")
-    return handler
 
 
 @contextmanager
