@@ -1,8 +1,10 @@
-# Clones TripoSR into vendor/ and installs the ai extra (torch with CUDA 12.4). Run from the repo root.
+# Clones TripoSR into vendor/ at the commit it is tested with, and installs the ai extra (torch from PyTorch's
+# CUDA 12.6 build, see pyproject.toml). Run from the repo root.
+# Local TripoSR needs transformers below 5; the trocr extra needs 5 or newer. With both, hf3d falls back to the
+# Hugging Face Space, which works either way.
 $ErrorActionPreference = "Stop"
-if (-not (Test-Path vendor/TripoSR)) { git clone --depth 1 https://github.com/VAST-AI-Research/TripoSR vendor/TripoSR }
+$Commit = "107cefdc244c39106fa830359024f6a2f1c78871"
+if (-not (Test-Path vendor/TripoSR)) { git clone https://github.com/VAST-AI-Research/TripoSR vendor/TripoSR }
+git -C vendor/TripoSR checkout --quiet $Commit
 uv sync --extra ai
-# PyPI ships a CPU-only torch on Windows. TripoSR needs CUDA locally; without it, hf3d falls back to the
-# Hugging Face Space. The CUDA build is a 2.4 GB download, so install it separately and retry if it drops:
-#   uv pip install torch --index-url https://download.pytorch.org/whl/cu124
 uv run python -c "import torch; print('torch', torch.__version__, 'CUDA available:', torch.cuda.is_available())"

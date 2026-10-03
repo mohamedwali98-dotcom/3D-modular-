@@ -18,3 +18,9 @@ def test_every_named_path_exists(doc):
     missing += [m for m in APP.findall(text) if not (ROOT / (m.replace(".", "/") + ".py")).exists()]
     missing += [p for p in RUN.findall(text) if not (ROOT / p).exists()]
     assert missing == []
+
+
+def test_the_trocr_extra_asks_for_the_transformers_it_is_tested_with():
+    import tomllib
+    extras = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["optional-dependencies"]
+    assert "transformers>=5" in extras["trocr"] and len({d for e in extras.values() for d in e if d.startswith("torch")}) == 1

@@ -37,7 +37,7 @@ ai = [
   "gradio_client>=1.3",
 ]
 ocr = ["paddleocr>=3.0", "paddlepaddle>=3.0"]
-trocr = ["transformers>=4.44", "torch>=2.3"]
+trocr = ["transformers>=5", "torch>=2.4"]  # TrOCR is tested on transformers 5
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.27"]

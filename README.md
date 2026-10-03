@@ -144,7 +144,7 @@ G-code needs PrusaSlicer: `winget install --id Prusa3D.PrusaSlicer -e` (needs ad
 
 Export formats: STL, STEP, 3MF, OBJ, GLB, PLY, BREP, Blender, DXF/SVG/PDF drawing, G-code, and a zip with a manifest. Blender: set `BLENDER_PATH`, or run `scripts/setup_blender.ps1`; without it the download is a Blender kit.
 
-TripoSR (the local fallback when Qwen-Image cannot complete a face): `powershell scripts/setup_triposr.ps1` installs it; without it, that face falls straight to a rectangle.
+TripoSR (the local fallback when Qwen-Image cannot complete a face): `powershell scripts/setup_triposr.ps1` installs it at the commit it is tested with; without it, that face falls straight to a rectangle. Local TripoSR needs transformers below 5, while the `trocr` extra needs 5 or newer: with both installed, TripoSR runs on its Hugging Face Space instead.
 
 ## Repository layout
 

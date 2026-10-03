@@ -83,7 +83,8 @@ def _local_model():
         raise RuntimeError("no CUDA device")
     if not REPO_DIR.exists():
         raise RuntimeError(f"TripoSR not found at {REPO_DIR}; run scripts/setup_triposr.ps1")
-    sys.path.insert(0, str(REPO_DIR))
+    if str(REPO_DIR) not in sys.path:  # appended: the checkout never shadows an installed package
+        sys.path.append(str(REPO_DIR))
     _install_mcubes_shim()
     from tsr.system import TSR
     model = TSR.from_pretrained("stabilityai/TripoSR", config_name="config.yaml", weight_name="model.ckpt")
