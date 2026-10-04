@@ -228,7 +228,8 @@ class Studio:
             crop = folder / f"{sheet_id}_{c.view}.png"
             crop.write_bytes(c.png)
             items.append(Item(uuid.uuid4().hex[:8], str(crop), f"{Path(path).name} · view {c.view + 1}", c.face,
-                              "drawing", sheet_id, c.view, mm_per_px=read.scale.mm_per_px, numbers=False,
+                              "drawing", sheet_id, c.view, mm_per_px=read.scale.mm_per_px,
+                              scale_confirmed=read.scale.confirmed, numbers=False,
                               line_art=read.kind == "sketch"))
         read.sheet.warnings += [w for w in read.warnings if w not in read.naming.warnings]
         if read.kind == "sketch":  # its views are on the rectified page, not on the photo: rename them there
@@ -351,7 +352,8 @@ class Studio:
                 return Review(False, "capture", bad)
             images.append(ImageInput(data, None if item.face == "auto" else item.face,
                                      None if item.kind == "auto" else item.kind, mm_per_px=item.mm_per_px,
-                                     numbers=item.numbers, line_art=item.line_art))
+                                     scale_confirmed=item.scale_confirmed, numbers=item.numbers,
+                                     line_art=item.line_art))
         pipe = self.pipe.configured(ai)
         # a new analysis replaces the last one even when it stops: Build, Redraw and Export never act on old images
         session.observed, session.spec, session.part, session.exported = None, None, None, None
@@ -407,7 +409,8 @@ class Studio:
                 value, prov = getattr(spec.envelope, f"{axis}_mm"), spec.provenance[path]
             else:
                 value = known.get(path, session.edits.get(path))
-                prov = "user_edited" if path in session.edits else None
+                read = (abstain.partial or {}).get("provenance", {}) if abstain else {}
+                prov = "user_edited" if path in session.edits else read.get(path)  # where a known size came from
             hint = suggested.get(path)
             sizes[axis] = {"value": "" if value is None else f"{value:g}",
                            "placeholder": f"suggested {hint:g}" if hint else "mm",

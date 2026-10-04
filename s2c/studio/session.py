@@ -29,6 +29,7 @@ class Item:
     view: int | None = None      # ... and its index among the part drawing's views
     hand_face: bool = False      # the user picked the face: the projection switch never renames it
     mm_per_px: float | None = None  # the sheet's scale from its dimensions, in the crop's pixels
+    scale_confirmed: bool = True    # False: one dimension read, or two that disagree: its sizes are to be confirmed
     numbers: bool = True         # False: a sheet's view, its numbers read on the sheet; the crop is never read again
     line_art: bool = False       # True: a sketch's view, drawn again in lines from its strokes
 

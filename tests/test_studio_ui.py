@@ -508,3 +508,37 @@ def test_rejecting_a_face_clears_the_feature_values_typed(studio, tmp_path):
     review, _ = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, ["right"], GeometrySettings())
     assert not any(k.startswith("features[") for k in session.edits)
     assert "cleared" in review.warnings_html
+
+
+def test_a_size_already_known_says_where_it_came_from_while_another_is_missing(studio, tmp_path):
+    """The first review usually stops on one missing size: the sizes read from the sketch say so, not "Required"."""
+    from s2c.multiview.spec import MvAbstain
+    sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
+    session = studio.store.get(sid)
+    studio.analyze(sid, "none", AiSettings())
+    stop = MvAbstain(stage="dimensions", reason="missing_y", remedy="Enter the height in mm.",
+                     partial={"known": {"envelope.x_mm": 60.0}, "missing": ["envelope.y_mm"], "suggested": {},
+                              "provenance": {"envelope.x_mm": "user_written"}})
+    review = studio._review(session, stop)
+    assert review.sizes["x"]["value"] == "60" and review.sizes["x"]["info"] == "from: user written"
+    assert review.sizes["y"]["info"].startswith("Required")
+
+
+def test_an_unconfirmed_sheet_scale_stays_unconfirmed(tmp_path, monkeypatch):
+    """A sheet with one dimension read has a scale to check: its sizes must come out "unconfirmed", never measured."""
+    from s2c.studio.session import Item
+    seen = []
+
+    class Recording(MvPipeline):
+        def observe(self, images, reference=None, progress=None):
+            seen.extend(images)
+            return super().observe(images, reference, progress)
+
+    studio = Studio(Recording(), root=tmp_path / "files")
+    sid = studio.store.new()
+    path = tmp_path / "view.png"
+    path.write_bytes(sketch(600, 400))
+    studio.store.get(sid).items = [Item("a", str(path), "view", "front", "drawing", mm_per_px=0.1,
+                                        numbers=False, scale_confirmed=False)]
+    studio.analyze(sid, "none", AiSettings())
+    assert seen and seen[0].scale_confirmed is False
