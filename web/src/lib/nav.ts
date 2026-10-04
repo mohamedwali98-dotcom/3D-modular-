@@ -38,7 +38,7 @@ export function buildNav(state: State): NavItem[] {
   const modelItem: NavItem = {
     num: '03', label: 'Model', screen: 'model',
     st: !modelOpen ? 'locked' : screen === 'model' ? 'current' : 'open',
-    sub: !modelOpen ? (spec && !stop ? 'Build to open' : 'After review') : model ? 'Built' : 'Building…',
+    sub: !modelOpen ? (spec && !stop ? 'Build to open' : 'After review') : model?.abstain ? 'Could not build' : model ? 'Built' : 'Building…',
   };
   return [first, review, modelItem];
 }

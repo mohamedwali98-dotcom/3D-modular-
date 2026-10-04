@@ -51,3 +51,13 @@ describe('buildNav capture item', () => {
     expect(capture(again).spinning).toBe(true);
   });
 });
+
+describe('buildNav model item', () => {
+  it('never says Built for a build that stopped', () => {
+    const spec = { version: 'mv1', envelope: { x_mm: 1, y_mm: 1, z_mm: 1 }, features: [], provenance: {} } as unknown as State['modelSpec'];
+    const analysis = { request_id: 'j1', spec, abstain: null, filled_by: {} } as unknown as State['analysis'];
+    const model = { key: null, abstain: { stage: 'build', reason: 'x', remedy: 'r', partial: null } } as unknown as State['model'];
+    const item = buildNav({ ...initialState, screen: 'review', analysis, model })[2];
+    expect(item.sub).not.toBe('Built');
+  });
+});

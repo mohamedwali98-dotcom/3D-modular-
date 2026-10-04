@@ -4,6 +4,7 @@ import type { Face, Job, JobImage, ReadValue, Spec, StageKey } from '../api/type
 import { StopCard } from '../components/StopCard';
 import { analyzingCta } from '../lib/abstain';
 import { pace, type FaceShow, type PacedStage, type Playback } from '../lib/pacing';
+import { onLeave } from '../lib/leave';
 import { nextPoll, POLL_MS } from '../lib/poll';
 import { BADGE, countChecks, envelopeRows, featureRows } from '../lib/provenance';
 import { useStore } from '../state/store';
@@ -402,7 +403,9 @@ export function Analyzing() {
 
   const toCapture = () => dispatch({ type: 'GOTO', screen: 'capture' });
   const onCancel = async () => {
-    if (jobId && job?.status !== 'done') {
+    const plan = onLeave(job);
+    if (plan === 'hand_over' && job?.result) dispatch({ type: 'ANALYSIS', analysis: job.result }); // kept for Review
+    if (plan === 'cancel' && jobId) {
       try { await cancelJob(jobId); } catch { /* the job may already be gone; leaving is still right */ }
     }
     toCapture();
