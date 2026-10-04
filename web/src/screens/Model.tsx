@@ -53,6 +53,7 @@ const chip: CSSProperties = {
 const CSS = `
 @media (max-width:1023px){
   .s2c-model-grid{grid-template-columns:minmax(0,1fr)!important}
+  .s2c-model-chips{max-width:calc(100% - 92px)!important;min-width:0!important}
   .s2c-model-viewer{min-height:460px}
   .s2c-model-header{height:auto!important;flex-wrap:wrap}
 }`;
@@ -244,7 +245,7 @@ export function Model() {
           <Viewer glbUrl={model && !model.abstain ? model.glb_url : null} labels={labels} showDims={dims} section={section} fitSignal={fit}
             placeholder={building ? 'Building your part…' : buildErr ? '3D preview unavailable' : model?.abstain ? '' : '3D preview unavailable'} />
 
-          <div style={{ position: 'absolute', left: 18, top: 18, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, maxWidth: 'calc(100% - 420px)', minWidth: 200 }}>
+          <div className="s2c-model-chips" style={{ position: 'absolute', left: 18, top: 18, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 8, maxWidth: 'calc(100% - 420px)', minWidth: 200 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 32, padding: '0 12px', borderRadius: 16, background: 'var(--raised)', boxShadow: 'var(--shadow)', fontFamily: MONO, fontSize: 12, letterSpacing: '0.06em', whiteSpace: 'nowrap' }}>
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />{viewerTag}
             </div>

@@ -3,6 +3,7 @@ import * as T from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import type { BadgeKey } from '../lib/provenance';
 import { BADGE } from '../lib/provenance';
+import { zoomed } from '../lib/orbit';
 
 export interface DimLabel { value: string; prov: BadgeKey }
 
@@ -107,18 +108,34 @@ export function Viewer({ glbUrl, labels, showDims, section, fitSignal, placehold
     };
     const ro = new ResizeObserver(resize); ro.observe(el); resize();
 
-    const onDown = (e: PointerEvent) => { ctx.orbit.drag = [e.clientX, e.clientY]; el.setPointerCapture(e.pointerId); el.style.cursor = 'grabbing'; };
+    // one finger (or the mouse) orbits; two fingers pinch to zoom, within the wheel's limits
+    const touches = new Map<number, [number, number]>();
+    const spread = () => { const [a, b] = [...touches.values()]; return Math.hypot(a[0] - b[0], a[1] - b[1]); };
+    let pinch = 0;
+    const onDown = (e: PointerEvent) => {
+      touches.set(e.pointerId, [e.clientX, e.clientY]);
+      el.setPointerCapture(e.pointerId);
+      if (touches.size === 2) { pinch = spread(); ctx.orbit.drag = null; return; }
+      ctx.orbit.drag = [e.clientX, e.clientY]; el.style.cursor = 'grabbing';
+    };
     const onMove = (e: PointerEvent) => {
+      if (touches.has(e.pointerId)) touches.set(e.pointerId, [e.clientX, e.clientY]);
+      if (touches.size === 2) {
+        const d = spread();
+        if (pinch > 0 && d > 0) ctx.orbit.rad = zoomed(ctx.orbit.rad, ctx.fit?.size ?? 50, pinch / d);
+        pinch = d; ctx.orbit.idle = 0;
+        return;
+      }
       const o = ctx.orbit; if (!o.drag) return;
       o.th -= (e.clientX - o.drag[0]) * 0.008;
       o.ph = Math.max(0.2, Math.min(1.5, o.ph - (e.clientY - o.drag[1]) * 0.006));
       o.drag = [e.clientX, e.clientY]; o.idle = 0;
     };
-    const onUp = () => { ctx.orbit.drag = null; el.style.cursor = 'grab'; };
+    const onUp = (e: PointerEvent) => { touches.delete(e.pointerId); pinch = 0; ctx.orbit.drag = null; el.style.cursor = 'grab'; };
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
       const s = ctx.fit?.size ?? 50;
-      ctx.orbit.rad = Math.max(s * 1.4, Math.min(s * 6.4, ctx.orbit.rad * (1 + e.deltaY * 0.001)));
+      ctx.orbit.rad = zoomed(ctx.orbit.rad, s, 1 + e.deltaY * 0.001);
     };
     el.addEventListener('pointerdown', onDown);
     el.addEventListener('pointermove', onMove);
@@ -178,6 +195,7 @@ export function Viewer({ glbUrl, labels, showDims, section, fitSignal, placehold
       disposeGrid(ctx.grid);
       mat.dispose(); edgeMat.dispose(); dimMat.dispose();
       r.dispose();
+      r.forceContextLoss();  // phones allow few WebGL contexts: Review <-> Model trips must not use them up
       r.domElement.remove();
       ctxRef.current = null;
     };
