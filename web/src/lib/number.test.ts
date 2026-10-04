@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { dropFeatureDrafts, fieldProblem, parseMm } from './number';
+import { dropFeatureDrafts, fieldProblem, parseMm, shownProblems } from './number';
 
 describe('number', () => {
   it('reads a decimal comma, Arabic-Indic and Persian digits, and refuses everything else', () => {
@@ -20,5 +20,13 @@ describe('number', () => {
   });
   it('drops only the feature drafts when the faces change', () => {
     expect(dropFeatureDrafts({ 'envelope.x_mm': '50', 'features[1].diameter_mm': '6' })).toEqual({ 'envelope.x_mm': '50' });
+  });
+});
+
+describe('shownProblems', () => {
+  it('holds Build only for a value still on screen: a removed feature takes its bad draft with it', () => {
+    const drafts = { 'features[0].diameter_mm': '0', 'envelope.x_mm': '50' };
+    expect(Object.keys(shownProblems(drafts, new Set(['envelope.x_mm', 'features[0].diameter_mm'])))).toEqual(['features[0].diameter_mm']);
+    expect(shownProblems(drafts, new Set(['envelope.x_mm']))).toEqual({});
   });
 });

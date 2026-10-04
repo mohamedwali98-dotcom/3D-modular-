@@ -6,7 +6,7 @@ import { StopCard } from '../components/StopCard';
 import { EXPIRED, isDimensionAbstain } from '../lib/abstain';
 import { snappedLabel } from '../lib/snap';
 import { listPhrase } from '../lib/words';
-import { dropFeatureDrafts, fieldProblem, parseMm } from '../lib/number';
+import { dropFeatureDrafts, fieldProblem, parseMm, shownProblems } from '../lib/number';
 import { reviewGate } from '../lib/gate';
 import { BADGE, countChecks, featureRows, groupBadge, isCheck, provOf, type BadgeKey } from '../lib/provenance';
 import { useStore } from '../state/store';
@@ -255,10 +255,8 @@ export function Review() {
   // A part described in the chat has no analysis to merge with: its sizes are changed in the chat, not here.
   const described = !requestId;
   // a draft that is not a valid value is never sent: it is shown at its field and holds Build until fixed
-  const problems: Record<string, string> = Object.fromEntries(Object.entries(drafts).flatMap(([p, raw]) => {
-    const why = raw.trim() === '' ? null : fieldProblem(p, raw);
-    return why ? [[p, why]] : [];
-  }));
+  const shown = new Set([...envRows.map((e) => e.path), ...groups.flatMap((g) => g.fields.map((f) => f.path))]);
+  const problems = shownProblems(drafts, shown);
   const invalid = Object.keys(problems).length > 0;
   // A merge is waiting (debounce) or in flight: the spec on screen does not hold every typed value yet.
   const { updating, retry, blocked: buildBlocked } = reviewGate({

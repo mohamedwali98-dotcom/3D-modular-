@@ -26,3 +26,12 @@ export function fieldProblem(path: string, raw: string): string | null {
 export function dropFeatureDrafts(drafts: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(drafts).filter(([path]) => !path.startsWith('features[')));
 }
+
+/** The typed values that cannot be sent, by path, among those still on screen: a draft for a feature the user
+ * removed (or that a merge no longer lists) never holds Build with nothing left to fix. */
+export function shownProblems(drafts: Record<string, string>, shown: Set<string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(drafts).flatMap(([path, raw]) => {
+    const why = shown.has(path) && raw.trim() !== '' ? fieldProblem(path, raw) : null;
+    return why ? [[path, why]] : [];
+  }));
+}
