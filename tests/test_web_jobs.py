@@ -108,3 +108,14 @@ def test_a_per_image_stage_is_timed_from_its_own_image(monkeypatch):
         jobs.reduce(job, "stage", {"key": "label", "state": state, "index": index})
     text = obs.render()
     assert 's2c_stage_seconds_sum{stage="label"} 3' in text and 's2c_stage_seconds_count{stage="label"} 2' in text
+
+
+def test_a_stage_one_image_finished_stays_finished_while_the_next_image_runs_it():
+    """label, outline and read run once per image: the second image's "running" must not send the screen's
+    playback backwards (outlines vanishing, the ring dropping)."""
+    job = jobs.new_job(2, MvPipeline(), register=False)
+    for index, state in ((0, "running"), (0, "done"), (1, "running")):
+        jobs.reduce(job, "stage", {"key": "label", "state": state, "index": index})
+    assert job.stage("label")["state"] == "done"
+    jobs.reduce(job, "stage", {"key": "label", "state": "done", "index": 1, "face": "top"})
+    assert job.stage("label")["state"] == "done" and job.images[1]["face"] == "top"

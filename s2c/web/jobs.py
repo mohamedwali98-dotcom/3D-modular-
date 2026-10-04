@@ -228,6 +228,8 @@ def reduce(job: Job, name: str, data: dict) -> None:
         image = job.images[index] if index is not None and 0 <= index < len(job.images) else None
         if state == "running":
             job.stage_clock[(key, index)] = now
+            if stage["state"] == "done":  # the next image running a stage one image finished: never go back
+                return
             stage["state"] = "running"
             stage["started"] = stage["started"] or now
             stage["ended"] = None
