@@ -84,8 +84,11 @@ export async function startAnalysis(
   return r.job_id;
 }
 
-export function getJob(id: string): Promise<Job> {
-  return request<Job>(`/jobs/${encodeURIComponent(id)}`);
+/** One poll; a request that hangs past `timeoutMs` fails like a dropped connection instead of freezing the screen. */
+export function getJob(id: string, timeoutMs = 10_000): Promise<Job> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
+  return request<Job>(`/jobs/${encodeURIComponent(id)}`, { signal: ctl.signal }).finally(() => clearTimeout(timer));
 }
 
 export async function cancelJob(id: string): Promise<void> {

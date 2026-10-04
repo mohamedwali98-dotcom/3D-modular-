@@ -4,6 +4,7 @@ import type { Face, Job, JobImage, ReadValue, Spec, StageKey } from '../api/type
 import { StopCard } from '../components/StopCard';
 import { analyzingCta } from '../lib/abstain';
 import { pace, type FaceShow, type PacedStage, type Playback } from '../lib/pacing';
+import { nextPoll, POLL_MS } from '../lib/poll';
 import { BADGE, countChecks, envelopeRows, featureRows } from '../lib/provenance';
 import { useStore } from '../state/store';
 
@@ -16,8 +17,6 @@ const cl = (x: number) => Math.max(0, Math.min(1, x));
 const ez = (x: number) => 1 - Math.pow(1 - cl(x), 3);
 const back = (x: number) => { x = cl(x); const s = 1.6; return 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2); };
 const fmt = (v: number) => String(Math.round(v * 10) / 10);
-const POLL_MS = 400;
-const MAX_FAILS = 15;
 
 /** Fixed UI copy per stage (what the step does). Values shown come from the job. */
 const COPY: Record<StageKey, { name: string; run: string }> = {
@@ -323,15 +322,17 @@ export function Analyzing() {
   const [pipe, setPipe] = useState(false);
   const [netErr, setNetErr] = useState<string | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
+  const [offline, setOffline] = useState(false); // the fatal stop is a lost connection: polling can resume
+  const [pollRun, setPollRun] = useState(0);
   const [natural, setNatural] = useState<Record<number, [number, number]>>({});
   const jobRef = useRef(job);
   jobRef.current = job;
 
-  // Poll the job every 400 ms while it runs.
+  // Poll the job while it runs: every 400 ms, backing off while the network is down (lib/poll).
   useEffect(() => {
     if (!jobId) return;
     if (jobRef.current && jobRef.current.job_id === jobId && jobRef.current.status !== 'running') return;
-    let alive = true, timer: number | undefined, fails = 0;
+    let alive = true, timer: number | undefined, fails = 0, failingSince = 0;
     const tick = async () => {
       try {
         const j = await getJob(jobId);
@@ -343,19 +344,25 @@ export function Analyzing() {
       } catch (e) {
         if (!alive) return;
         fails += 1;
+        if (fails === 1) failingSince = Date.now();
         const msg = e instanceof ApiError ? e.message : 'Could not reach the server.';
-        if ((e instanceof ApiError && (e.status === 404 || e.status === 410)) || fails >= MAX_FAILS) {
+        const gone = e instanceof ApiError && (e.status === 404 || e.status === 410);
+        const wait = gone ? null : nextPoll(fails, Date.now() - failingSince);
+        if (wait === null) {
           setFatal(msg);
+          setOffline(!gone);
           dispatch({ type: 'JOB_LOST', error: msg });
           return;
         }
         setNetErr(msg);
+        timer = window.setTimeout(tick, wait);
+        return;
       }
       timer = window.setTimeout(tick, POLL_MS);
     };
     void tick();
     return () => { alive = false; window.clearTimeout(timer); };
-  }, [jobId, dispatch]);
+  }, [jobId, dispatch, pollRun]);
 
   const pb = useMemo(() => (job ? pace(job, startedAt.current, now) : null), [job, now]);
   const result = job?.result ?? null;
@@ -385,6 +392,14 @@ export function Analyzing() {
   }
   if (job && (job.status === 'failed' || job.status === 'cancelled')) {
     return wrap(<StopCard title={job.status === 'failed' ? 'The analysis stopped' : 'The analysis was cancelled'} remedy={job.error ?? 'Try again or use different photos.'} actionLabel="Back to capture" onAction={toCapture} />);
+  }
+  if (fatal && offline) {
+    // the job may still be running on the server: keep waiting for it, or give it up (which frees its slot)
+    return wrap(<>
+      <StopCard title="Lost the connection" remedy={`${fatal} Your analysis may still be running.`} actionLabel="Keep waiting"
+        onAction={() => { setFatal(null); setOffline(false); setNetErr(null); setPollRun((n) => n + 1); }} />
+      <button type="button" onClick={onCancel} style={{ justifySelf: 'start', marginTop: 12, border: 'none', background: 'none', padding: 0, color: 'var(--muted)', font: 'inherit', fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Give it up and go back to capture</button>
+    </>);
   }
   if (fatal) {
     return wrap(<StopCard title="Lost the analysis" remedy={fatal} actionLabel="Back to capture" onAction={toCapture} />);
