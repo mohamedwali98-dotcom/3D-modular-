@@ -126,17 +126,14 @@ def fuse_envelope(observations: list[Observation], user_values: dict | None = No
     values: dict[str, float] = {}
     prov: dict[str, str] = {}
     pending: dict[str, float] = {}
+    invalid: list[str] = []
     for axis in "xyz":
         key, name = f"envelope.{axis}_mm", S.AXIS_NAMES[axis]
         if key in user_values:
             typed = float(user_values[key])
-            if not 0 < typed <= S.MAX_MM:  # asked for again by name, never a 500 from the Envelope model
-                known = {f"envelope.{a}_mm": float(user_values[f"envelope.{a}_mm"]) for a in "xyz"
-                         if a != axis and f"envelope.{a}_mm" in user_values}
-                return S.MvAbstain(stage="dimensions", reason="invalid_value",
-                                   remedy=f"The {name} must be more than 0 and at most 10 000 mm.",
-                                   partial={"known": known, "missing": [key], "suggested": {},
-                                            "provenance": dict.fromkeys(known, "user_edited")})
+            if not 0 < typed <= S.MAX_MM:  # asked for again by name (below), never a 500 from the Envelope model
+                invalid.append(axis)
+                continue
             values[axis], prov[key] = typed, "user_edited"
             continue
         written = [c for c in cands[axis] if c.prov == "user_written"]
@@ -158,6 +155,13 @@ def fuse_envelope(observations: list[Observation], user_values: dict | None = No
             values[axis], prov[key] = round(best.value, 2), "measured"
         elif unconfirmed:
             pending[axis] = max(unconfirmed, key=lambda c: c.confidence).value
+    if invalid:  # the other sizes, typed or read, are kept so the Review does not blank them
+        key = f"envelope.{invalid[0]}_mm"
+        return S.MvAbstain(stage="dimensions", reason="invalid_value",
+                           remedy=f"The {S.AXIS_NAMES[invalid[0]]} must be more than 0 and at most 10 000 mm.",
+                           partial={"known": {f"envelope.{a}_mm": v for a, v in values.items()},
+                                    "missing": [f"envelope.{a}_mm" for a in invalid], "suggested": {},
+                                    "provenance": {f"envelope.{a}_mm": prov[f"envelope.{a}_mm"] for a in values}})
     missing = [a for a in "xyz" if a not in values]
     if missing:
         first = missing[0]

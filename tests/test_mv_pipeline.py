@@ -287,3 +287,15 @@ def test_a_labeling_outage_falls_back_to_the_users_tags_or_stops_with_a_remedy()
     assert not isinstance(tagged, MvAbstain) and tagged.observations[0].face == "front"
     untagged = pipe.observe([ImageInput(sketch(600, 400), None, None)])
     assert isinstance(untagged, MvAbstain) and untagged.reason == "label_unavailable"
+
+
+def test_a_typed_size_out_of_range_keeps_the_sizes_read_from_the_sketch(monkeypatch):
+    """Width 60 and height 40 were written on the sketch: a depth of 20 000 typed by mistake asks for the depth
+    again and keeps them, so the Review does not blank them."""
+    monkeypatch.setattr(pipeline, "read_values", fake_reads([[(60, "below"), (40, "left")], [(60, "below")]]))
+    pipe = MvPipeline(reader=lambda crop: ("", 0.0))
+    observed = pipe.observe([ImageInput(sketch(600, 400), "front", "sketch"), ImageInput(sketch(600, 100), "top", "sketch")])
+    stop = pipe.fuse(observed, {"envelope.z_mm": 20000.0})
+    assert isinstance(stop, MvAbstain) and stop.reason == "invalid_value"
+    assert stop.partial["known"] == {"envelope.x_mm": 60.0, "envelope.y_mm": 40.0}
+    assert stop.partial["provenance"]["envelope.x_mm"] == "user_written"
