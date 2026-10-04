@@ -103,7 +103,7 @@ Open `http://localhost:8000`, or `http://<your-LAN-IP>:8000` on a phone on the s
 
 ```bash
 uv run uvicorn s2c.web.server:app --port 8000 --reload     # terminal 1
-cd web && npm run dev                                       # terminal 2, open http://localhost:5173
+cd web && npm run dev                                       # terminal 2, open http://localhost:5173 (add -- --host for a phone; set S2C_ACCESS_TOKEN first)
 ```
 
 On Windows, `powershell scripts/dev.ps1` starts both (Ctrl+C stops both). Other entry points:

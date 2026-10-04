@@ -43,14 +43,23 @@ def _open(method: str, path: str) -> bool:
     return method in ("GET", "HEAD") and (path in OPEN_PATHS or path.startswith(OPEN_PREFIXES))
 
 
+def caller(request: Request) -> str:
+    """The device a call came from. A proxy on this computer (the Vite dev server, nginx) relays other devices'
+    calls: then the last X-Forwarded-For hop, the one the proxy itself appended, is the caller."""
+    host = request.client.host if request.client else ""
+    relayed = request.headers.get("x-forwarded-for", "")
+    if host in LOCAL and relayed.strip():
+        return relayed.split(",")[-1].strip()
+    return host
+
+
 def refusal(request: Request) -> str | None:
     """Why this /api call may not go on, or None when it may."""
     if _open(request.method, request.url.path):
         return None
     token = access_token()
     if token is None:
-        host = request.client.host if request.client else ""
-        return None if host in LOCAL else NO_TOKEN
+        return None if caller(request) in LOCAL else NO_TOKEN
     sent = request.headers.get("authorization", "")
     return None if hmac.compare_digest(sent.encode(), f"Bearer {token}".encode()) else BAD_TOKEN
 
@@ -105,7 +114,7 @@ def install_guards(app: FastAPI) -> None:
             obs.count("s2c_refused_total", reason="token")
             return JSONResponse({"error": why}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
         limit = LIMITS.get((request.method, path))
-        host = request.client.host if request.client else ""
+        host = caller(request)  # each device behind a local proxy has its own budget
         if limit is not None and not LIMITER.allow((host, path), limit):
             obs.count("s2c_refused_total", reason="rate")
             return JSONResponse({"error": SLOW_DOWN}, status_code=429, headers={"Retry-After": str(int(WINDOW_S))})

@@ -121,3 +121,14 @@ def test_every_refusal_is_counted_by_reason():
     text = obs.render()
     for reason in ("token", "rate", "busy", "body"):
         assert f's2c_refused_total{{reason="{reason}"}} 1' in text, reason
+
+
+def test_a_call_relayed_by_a_local_proxy_counts_as_the_device_it_came_from():
+    """The Vite dev server (or nginx) on this computer relays a phone's call: without a token the phone is refused,
+    as if it had called directly; this computer's own calls through the proxy still pass."""
+    relayed = client(LOCAL).post("/api/merge", json=UNKNOWN_JOB, headers={"X-Forwarded-For": "192.168.1.23"})
+    assert relayed.status_code == 401
+    own = client(LOCAL).post("/api/merge", json=UNKNOWN_JOB, headers={"X-Forwarded-For": "127.0.0.1"})
+    assert own.status_code == 404
+    spoofed = client(LOCAL).post("/api/merge", json=UNKNOWN_JOB, headers={"X-Forwarded-For": "127.0.0.1, 192.168.1.23"})
+    assert spoofed.status_code == 401  # the proxy appends the real peer last: an earlier "127.0.0.1" proves nothing
