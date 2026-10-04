@@ -100,7 +100,8 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
                             sheet_example = gr.Button("Try a drawing sheet", variant="secondary")
                         with gr.Accordion("Reading & AI", open=False):
                             use_reader = gr.Checkbox(True, label="Read handwriting with Qwen-VL",
-                                                     info="Off: TrOCR only", interactive=status["Qwen-VL"])
+                                                     info="Off: TrOCR reads the numbers; the vision model still "
+                                                          "labels each image", interactive=status["Qwen-VL"])
                             ai = AiSettings()  # hosted image services start off: the user opts in
                             use_qwen = gr.Checkbox(ai.use_qwen_image, label="Draw missing faces with Qwen-Image",
                                                    info="Sends your images to a hosted service", interactive=status["Qwen-Image"])
@@ -303,7 +304,8 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
               [sid, *geometry_inputs], [model_msg, model, views, stats, *sizes.values(), values],
               trigger_mode="always_last", concurrency_id="cad")
         export.click(on_export, [sid, formats, quality, material, nozzle, layer, infill, pattern, perimeters,
-                                 supports, brim, scale], [export_msg, download, files, stats], concurrency_id="cad")
+                                 supports, brim, scale], [export_msg, download, files, stats],
+                     concurrency_id="export")  # a slicer or Blender export never queues every user's builds
     return app
 
 

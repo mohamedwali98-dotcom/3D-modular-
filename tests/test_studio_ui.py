@@ -566,3 +566,9 @@ def test_a_left_out_edit_is_forgotten(studio, tmp_path):
     assert "out of range" in review.warnings_html and session.row_paths[idx] not in session.edits
     review, _ = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
     assert "out of range" not in review.warnings_html
+
+
+def test_an_export_never_queues_the_other_users_builds(studio):
+    """A G-code or Blender export can take a minute: it runs in its own queue, not the builds' one."""
+    app = build_app(studio=studio)
+    assert app_event(app, "on_export").concurrency_id != app_event(app, "on_build").concurrency_id
