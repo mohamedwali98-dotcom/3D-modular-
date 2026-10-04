@@ -63,6 +63,18 @@ def test_the_edge_view_of_a_thin_washer_is_an_outline():
     assert abs(w - 1450) <= 6 and abs(h - 30) <= 6
 
 
+def test_the_edge_view_of_a_thin_l_shaped_part_is_an_outline():
+    """A hinge leaf seen edge-on: a long strip with a short arm at one end. It fills little of its box, yet it is a
+    solid band far wider than a pen stroke (benchmark hinge_003/004 abstained here)."""
+    img = page(1600, 1600)
+    cv2.rectangle(img, (760, 454), (760 + 26, 454 + 1074), (128, 128, 128), -1)  # the strip
+    cv2.rectangle(img, (760, 454), (760 + 236, 454 + 26), (128, 128, 128), -1)   # the arm
+    o = extract(img)
+    assert not isinstance(o, MvAbstain), o
+    _, _, w, h = o.bbox
+    assert abs(w - 237) <= 6 and abs(h - 1075) <= 6
+
+
 def test_a_small_speck_still_abstains():
     img = page(1600, 1600)
     cv2.rectangle(img, (780, 780), (820, 820), (60, 60, 60), -1)

@@ -18,6 +18,7 @@ EDGE_BAND_PX = 31  # the inside of a drawn outline touches this band next to the
 MIN_THIN_FRACTION = 0.002  # a thin part's edge view can be this small and still be a real outline
 MIN_THIN_SPAN = 0.10       # ...provided it is long relative to the page...
 MIN_THIN_FILL = 0.5        # ...and filled, not a hollow or broken stroke...
+MIN_THIN_WIDTH = 0.008     # ...or, filling little of its box (an L-shaped leaf), a band this share of the page wide
 MIN_THIN_MARGIN = 0.01     # ...and fully in frame, not a table edge or ruler crossing the border
 LINE_ART_FILL = 0.35       # a drawing whose ink covers less of its filled outline than this is drawn in lines...
 LINE_ART_STROKE = 0.015    # ...if the ink is also this thin (share of the long side); a thin-walled render is not
@@ -106,7 +107,8 @@ def is_thin_edge_view(contour, area: float, h: int, w: int) -> bool:
     x, y, bw, bh = cv2.boundingRect(contour)
     if max(bw, bh) < MIN_THIN_SPAN * max(h, w):
         return False
-    if area < MIN_THIN_FILL * bw * bh:
+    # 2 * area / perimeter is a band's mean width: a pen stroke is only as wide as the pen
+    if area < MIN_THIN_FILL * bw * bh and 2 * area / max(cv2.arcLength(contour, True), 1.0) < MIN_THIN_WIDTH * max(h, w):
         return False
     margin = MIN_THIN_MARGIN * max(h, w)
     return x >= margin and y >= margin and (w - (x + bw)) >= margin and (h - (y + bh)) >= margin
