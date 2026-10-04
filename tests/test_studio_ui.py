@@ -587,3 +587,19 @@ def test_the_manifest_records_the_geometry_the_part_was_built_with(studio, tmp_p
     with zipfile.ZipFile(exported.zip_path) as z:
         manifest = json.loads(z.read("manifest.json"))
     assert manifest["settings"]["geometry"]["finish"] == "none"
+
+
+def test_a_new_analyze_clears_step_3_and_redraw_keeps_a_size_typed_but_not_built(tmp_path, monkeypatch):
+    monkeypatch.setattr("s2c.multiview.slice.find_slicer", lambda: None)
+    gen = fake_gen(np.zeros((300, 300, 3), np.uint8))
+    studio = Studio(MvPipeline(image_gen=gen), root=tmp_path / "files")
+    app = build_app(studio=studio)
+    sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
+    ai = [True, True, False, False, False, 10, False, 1]  # reader, qwen, rescue, triposr, solaria, seed, random, tries
+    out = app_fn(app, "on_analyze")(sid, "none", *ai)
+    model, files = out[-5], out[-2]
+    assert model is None and files == []
+    review = studio.analyze(sid, "none", AiSettings(use_qwen_image=True, seed=10, attempts=1))
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    out = app_fn(app, "on_redraw")(sid, "60", "40", "12", *ai)
+    assert out[3] == gr.update()  # Z=12, typed but not built, stays in its box

@@ -220,26 +220,37 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
             studio.set_projection(s, p)
             return n + 1, studio.coverage_html(s), studio.sheet_html(s)
 
+        # step 3 after a new analysis: its previous part, files and zip belong to the last one
+        step3_cleared = ["", None, [], "", [], gr.DownloadButton(visible=False)]
+
         def on_analyze(s, ref, *v, progress=gr.Progress()):  # noqa: B008 - how Gradio injects a progress bar
             progress(0.1, desc="Reading your images, then drawing any missing faces…")
             try:
                 ai = ai_settings(*v)
             except ValueError as e:
                 msg = card("Check the AI settings", str(e), "stop")
-                return [gr.update(), msg, *[gr.update()] * len(review_outputs)]
+                return [gr.update(), msg, *[gr.update()] * len(review_outputs), *[gr.update()] * len(step3_cleared)]
             r = studio.analyze(s, ref, ai)
             if r.stage == "capture":
-                return [gr.update(), r.message_html, *[gr.update()] * len(review_outputs)]
-            return [gr.Walkthrough(selected=1), "", *show_review(r)]
+                return [gr.update(), r.message_html, *[gr.update()] * len(review_outputs), *step3_cleared]
+            return [gr.Walkthrough(selected=1), "", *show_review(r), *step3_cleared]
 
-        def on_redraw(s, *v):  # the AI switches as they are now, not as they were at Analyze
+        def keep_typed(r, boxes) -> list:
+            """The size boxes after a review that did not take what was typed: a size typed but not built stays."""
+            out = show_review(r)
+            for i, (a, typed) in enumerate(zip(AXES, boxes), start=1):
+                if str(typed or "").strip() and str(typed).strip() != str(r.sizes.get(a, {}).get("value", "")):
+                    out[i] = gr.update()
+            return out
+
+        def on_redraw(s, x, y, z, *v):  # the AI switches as they are now, not as they were at Analyze
             try:
                 r = studio.redraw(s, ai_settings(*v))
             except ValueError as e:
                 r = Review(False, "review", card("Check the AI settings", str(e), "stop"))
             if not r.ok and r.stage == "review" and not r.sizes:  # a card only: the review on screen stays
                 return [r.message_html, *[gr.update()] * (len(review_outputs) - 1)]
-            return show_review(r)
+            return keep_typed(r, (x, y, z))
 
         def on_suggest(s, *boxes):  # fills only the empty boxes; Build records them as the user's own values
             hints = studio.suggested_sizes(s)
@@ -258,15 +269,16 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
             step = gr.update() if target is None else gr.Walkthrough(selected=target)
             return [step, *show_review(r), m.message_html, _preview_update(m), m.views, m.stats_html]
 
-        def on_geometry(s, *g):
+        def on_geometry(s, x, y, z, *g):
             try:
                 geometry = geometry_settings(*g)
             except ValueError as e:
                 msg = card("Check the geometry settings", str(e), "stop")
                 return msg, gr.update(), gr.update(), gr.update(), *[gr.update()] * len(sizes), gr.update()
             r, m = studio.rebuild_geometry(s, geometry)
-            return (m.message_html, _preview_update(m), m.views, m.stats_html,
-                    *(_size_update(r.sizes.get(a, {})) for a in AXES), r.rows)
+            boxes = [gr.update() if str(t or "").strip() and str(t).strip() != str(r.sizes.get(a, {}).get("value", ""))
+                     else _size_update(r.sizes.get(a, {})) for a, t in zip(AXES, (x, y, z))]  # typed, not built: kept
+            return (m.message_html, _preview_update(m), m.views, m.stats_html, *boxes, r.rows)
 
         def on_export(s, fmts, q, mat, noz, lay, inf, pat, per, sup, br, sc):
             try:
@@ -290,10 +302,11 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
         sheet_example.click(on_sheet_example, [sid, version, use_reader], [version, coverage, sheet_card])
         projection.input(on_projection, [projection, sid, version], [version, coverage, sheet_card])
         app.load(studio.coverage_html, [sid], [coverage])
-        analyzing = analyze.click(on_analyze, [sid, reference, *ai_inputs], [walk, capture_msg, *review_outputs],
+        analyzing = analyze.click(on_analyze, [sid, reference, *ai_inputs],
+                                  [walk, capture_msg, *review_outputs, model_msg, model, views, stats, files, download],
                                   concurrency_id="models", concurrency_limit=2)
         cancel.click(None, None, None, cancels=[analyzing])
-        redraw.click(on_redraw, [sid, *ai_inputs], review_outputs, concurrency_id="models", concurrency_limit=2)
+        redraw.click(on_redraw, [sid, *sizes.values(), *ai_inputs], review_outputs, concurrency_id="models", concurrency_limit=2)
         suggest.click(on_suggest, [sid, *sizes.values()], list(sizes.values()))
         # The viewer is filled in a .then() after the step switch: a Model3D that gets its first file while its
         # step is still hidden never mounts its canvas (Gradio 6.28).
@@ -301,7 +314,7 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
                     [walk, *review_outputs, model_msg, built, views, stats], concurrency_id="cad").then(
             lambda path: path, [built], [model], api_visibility="private")
         gr.on([snap.input, clearance.input, finish.input, finish_mm.release, finish_edges.input], on_geometry,
-              [sid, *geometry_inputs], [model_msg, model, views, stats, *sizes.values(), values],
+              [sid, *sizes.values(), *geometry_inputs], [model_msg, model, views, stats, *sizes.values(), values],
               trigger_mode="always_last", concurrency_id="cad")
         export.click(on_export, [sid, formats, quality, material, nozzle, layer, infill, pattern, perimeters,
                                  supports, brim, scale], [export_msg, download, files, stats],
