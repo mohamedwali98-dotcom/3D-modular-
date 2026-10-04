@@ -22,3 +22,10 @@ export function faceInfo(by: string): FaceInfo {
 export function canReject(by: string): boolean {
   return by === 'qwen-image' || by === 'triposr';
 }
+
+/** The face card's button: Undo on a rejected face (the server refills it, as an assumed rectangle for one), Reject on
+ * a face an AI drew, none otherwise. */
+export function rejectAction(by: string, rejected: boolean): 'reject' | 'undo' | null {
+  if (rejected) return 'undo';
+  return canReject(by) ? 'reject' : null;
+}

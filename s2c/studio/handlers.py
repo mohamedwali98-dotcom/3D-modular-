@@ -570,15 +570,17 @@ class Studio:
     # ---- export ---------------------------------------------------------------------------------------------
     def export(self, sid: str, export: ExportSettings, mesh: MeshSettings, printing: PrintSettings) -> Exported:
         session = self.store.get(sid)
-        if session.part is None:
+        # read once: exports have their own queue, so a rebuild may replace session.part while the files are written
+        part, geometry = session.part, session.part_geometry or session.geometry
+        if part is None:
             return Exported(card("Nothing to export", "Build the part first.", "check"))
         self._sweep()
-        res = export_part(session.part, export.formats, mesh, printing, self.pipe.slicer, self.pipe.profile)
+        res = export_part(part, export.formats, mesh, printing, self.pipe.slicer, self.pipe.profile)
         session.exported = res
         settings = {"mesh": mesh.model_dump(), "printing": printing.model_dump(), "ai": session.ai.model_dump(),
-                    "geometry": (session.part_geometry or session.geometry).model_dump(), "formats": export.formats}
-        zip_path = bundle(session.part, res, settings)
-        x, y, z = session.part.bbox_mm
+                    "geometry": geometry.model_dump(), "formats": export.formats}
+        zip_path = bundle(part, res, settings)
+        x, y, z = part.bbox_mm
         items = [("Size", f"{x:.1f} × {y:.1f} × {z:.1f} mm"), ("Files", str(len(res.files))),
                  ("Download", f"{zip_path.stat().st_size / 1024:.0f} KB")]
         if res.print_time_s:

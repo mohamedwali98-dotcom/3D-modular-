@@ -1,5 +1,5 @@
 import type { FilledBy, Outline } from '../api/types';
-import { canReject, faceInfo } from '../lib/faces';
+import { faceInfo, rejectAction } from '../lib/faces';
 
 const MONO = "'Geist Mono', monospace";
 
@@ -22,8 +22,7 @@ function toPoints(pts: [number, number][], h: number): string {
 export function FaceCard({ label, outline, width, height, filledBy, rejected, onToggleReject }: FaceCardProps) {
   const isAi = filledBy !== 'observed';
   const info = faceInfo(filledBy);
-  const rejectable = canReject(filledBy);
-  rejected = rejected && rejectable;  // a face rebuilt the same way whatever the user says is never shown as "not used"
+  const action = rejectAction(filledBy, rejected);  // Undo stays on a rejected face, whatever refilled it
   const w = width > 0 ? width : 1;
   const h = height > 0 ? height : 1;
   const pad = Math.max(w, h) * 0.12 || 1;
@@ -45,7 +44,7 @@ export function FaceCard({ label, outline, width, height, filledBy, rejected, on
           border: `1.5px ${isAi ? 'dashed' : 'solid'} ${isAi ? 'var(--ai)' : 'var(--trusted)'}`,
           color: isAi ? 'var(--ai)' : 'var(--trusted)', fontSize: 12, fontWeight: 500, whiteSpace: 'nowrap',
         }}>
-          {isAi ? (rejected ? '✕ Rejected' : `◇ ${info.badge}`) : `✓ ${info.badge}`}
+          {isAi ? (rejected ? `✕ Rejected · now ${info.badge.toLowerCase()}` : `◇ ${info.badge}`) : `✓ ${info.badge}`}
         </span>
       </div>
 
@@ -59,7 +58,7 @@ export function FaceCard({ label, outline, width, height, filledBy, rejected, on
           : undefined,
       }}>
         {outline && outline.outer.length > 0 ? (
-          <svg viewBox={viewBox} style={{ width: '100%', height: '100%', opacity: rejected ? 0.25 : 1 }}>
+          <svg viewBox={viewBox} style={{ width: '100%', height: '100%' }}>
             {outline.inner.map((hole, i) => (
               <polygon key={`hole-${i}`} points={toPoints(hole, h)} vectorEffect="non-scaling-stroke" style={{ fill: isAi ? 'var(--inset)' : '#f4f3f0', stroke: strokeColor, strokeWidth: 1.4 }} />
             ))}
@@ -71,11 +70,6 @@ export function FaceCard({ label, outline, width, height, filledBy, rejected, on
         ) : (
           <span style={{ fontSize: 13, color: 'var(--muted)' }}>No outline yet</span>
         )}
-        {rejected && (
-          <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 500, color: 'var(--ai)' }}>
-            Rejected — not used
-          </div>
-        )}
       </div>
 
       <div style={{ fontSize: 13, color: isAi ? 'var(--ai)' : 'var(--muted)' }}>
@@ -84,7 +78,7 @@ export function FaceCard({ label, outline, width, height, filledBy, rejected, on
           : 'From your sketch'}
       </div>
 
-      {rejectable && (
+      {action && (
         <div style={{ display: 'flex', gap: 8 }}>
           <button type="button" onClick={onToggleReject} aria-pressed={rejected} style={{
             flex: 1, height: 40, borderRadius: 10, border: '1.5px solid var(--ai)',

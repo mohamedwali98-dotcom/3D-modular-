@@ -603,3 +603,22 @@ def test_a_new_analyze_clears_step_3_and_redraw_keeps_a_size_typed_but_not_built
     studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
     out = app_fn(app, "on_redraw")(sid, "60", "40", "12", *ai)
     assert out[3] == gr.update()  # Z=12, typed but not built, stays in its box
+
+
+def test_an_export_uses_one_part_even_if_a_rebuild_lands_meanwhile(studio, tmp_path, monkeypatch):
+    """Exports have their own queue now: a rebuild finishing during an export must not mix two parts in one zip."""
+    sid = with_images(studio, tmp_path)
+    review = studio.analyze(sid, "none", AiSettings())
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    session = studio.store.get(sid)
+    part = session.part
+    real = handlers.export_part
+
+    def export_while_a_rebuild_fails(*args, **kwargs):
+        res = real(*args, **kwargs)
+        session.part = None  # the same user's rebuild failed while the files were being written
+        return res
+
+    monkeypatch.setattr(handlers, "export_part", export_while_a_rebuild_fails)
+    exported = studio.export(sid, ExportSettings(formats=["stl"]), MeshSettings(), PrintSettings())
+    assert exported.zip_path and part.key[:8] in exported.zip_path
