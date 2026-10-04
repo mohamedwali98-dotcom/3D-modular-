@@ -625,3 +625,11 @@ def test_a_typed_size_out_of_range_is_left_out_and_review_keeps_its_rows():
         assert r.status_code == 200 and spec, (bad, r.text)
         assert spec["features"][0]["diameter_mm"] == before["features"][0]["diameter_mm"]
         assert any("diameter" in w and "out of range" in w for w in spec["warnings"]), spec["warnings"]
+
+
+def test_a_refused_setting_is_named_in_the_error():
+    """A layer too tall for the nozzle answers with the setting's own sentence, not only "the request is not valid"."""
+    spec = json.loads((Path(__file__).parents[1] / "examples" / "mv" / "l_bracket.json").read_text())
+    r = c.post("/api/export", json={"spec": spec, "settings": {"printing": {"nozzle_mm": 0.2, "layer_mm": 0.2},
+                                                                 "export": {"formats": ["step"]}}})
+    assert r.status_code == 422 and "layer height" in r.json()["error"].lower(), r.text

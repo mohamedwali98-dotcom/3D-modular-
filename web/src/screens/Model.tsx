@@ -5,6 +5,7 @@ import { MatchRing } from '../components/MatchRing';
 import { StopCard } from '../components/StopCard';
 import { Viewer, type DimLabel } from '../components/Viewer';
 import { EXPIRED } from '../lib/abstain';
+import { layerMax, withNozzle } from '../lib/print';
 import { BADGE, envelopeRows, isCheck } from '../lib/provenance';
 import { useStore } from '../state/store';
 
@@ -209,7 +210,7 @@ export function Model() {
     ? [ptime != null ? `${Math.round(ptime / 60)} min` : null, fil != null ? `${fil.toFixed(1)} g` : null].filter(Boolean).join(' · ')
     : 'ready to print';
   const sliders = [
-    { label: 'Layer', min: 0.05, max: 0.32, step: 0.01, value: print.layer, text: print.layer.toFixed(2), unit: ' mm', set: (v: number) => setP({ layer: v }) },
+    { label: 'Layer', min: 0.05, max: layerMax(print.nozzle), step: 0.01, value: print.layer, text: print.layer.toFixed(2), unit: ' mm', set: (v: number) => setP({ layer: v }) },
     { label: 'Infill', min: 0, max: 100, step: 5, value: print.infill, text: String(print.infill), unit: ' %', set: (v: number) => setP({ infill: v }) },
     { label: 'Perimeters', min: 1, max: 8, step: 1, value: print.perims, text: String(print.perims), unit: '', set: (v: number) => setP({ perims: v }) },
     { label: 'Brim', min: 0, max: 10, step: 1, value: print.brim, text: String(print.brim), unit: ' mm', set: (v: number) => setP({ brim: v }) },
@@ -417,7 +418,7 @@ export function Model() {
                 <span style={label}>Nozzle</span>
                 <div style={segWrap(3)}>
                   {['0.2', '0.4', '0.6', '0.8'].map((v) => (
-                    <button key={v} type="button" aria-pressed={print.nozzle === v} onClick={() => setP({ nozzle: v })} style={segBtn(print.nozzle === v, { height: 32, fontFamily: MONO, fontSize: 13 })}>{v}</button>
+                    <button key={v} type="button" aria-pressed={print.nozzle === v} onClick={() => setPrint((p) => withNozzle(p, v))} style={segBtn(print.nozzle === v, { height: 32, fontFamily: MONO, fontSize: 13 })}>{v}</button>
                   ))}
                 </div>
                 {sliders.map((s) => [
