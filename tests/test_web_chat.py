@@ -169,3 +169,15 @@ def test_a_genuine_reply_cannot_be_moved_after_another_user_turn():
                  {"role": "assistant", "content": first["reply"], "sig": first["sig"]},
                  {"role": "user", "content": "go on"})
     assert r.status_code == 400
+
+
+def test_a_long_reply_is_capped_so_the_conversation_can_go_on():
+    """The server refuses a message over MAX_CHARS; a reply it signed must never be one, or the next turn fails."""
+    long = "word " * 1000
+    r = post(fake({"reply": long, "options": [], "part": None}), "a plate")
+    reply = r.json()["reply"]
+    assert r.status_code == 200 and len(reply) <= chat.MAX_CHARS
+    again = c.post("/api/chat", json={"messages": [{"role": "user", "content": "a plate"},
+                                                   {"role": "assistant", "content": reply, "sig": r.json()["sig"]},
+                                                   {"role": "user", "content": "60 by 40"}]})
+    assert again.status_code != 400 or "longer than" not in again.text

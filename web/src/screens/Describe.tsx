@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent } from 'react';
 import { ApiError, chat } from '../api/client';
-import { lastTurns } from '../lib/turns';
+import { chatErrorAction, lastTurns } from '../lib/turns';
 import type { ChatMessage } from '../api/types';
 import { Badge } from '../components/Badge';
 import { StopCard } from '../components/StopCard';
@@ -51,12 +51,16 @@ function Bubble({ msg, model }: { msg: ChatMessage; model?: string }) {
 }
 
 /** Describe a part in words: the chat model asks for what is missing, our own code builds it. */
+// The conversation's turn, kept across visits to Describe: a reply that arrives for an older one is dropped.
+let chatTurn = 0;
+
 export function Describe() {
   const { state, dispatch } = useStore();
   const { messages, last } = state.chat;
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorAction, setErrorAction] = useState<'retry' | 'start_over'>('retry');
   const scroller = useRef<HTMLDivElement>(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -70,17 +74,21 @@ export function Describe() {
     const content = text.trim();
     if (!content || busy) return;
     const next: ChatMessage[] = [...history, { role: 'user', content }];
+    const my = ++chatTurn;  // a reply to an older conversation (left, started over, or sent again) is dropped
     dispatch({ type: 'CHAT', messages: next });
     setDraft('');
     setBusy(true);
     setError(null);
     try {
       const r = await chat(lastTurns(next, 20));
+      if (my !== chatTurn) return;
       dispatch({ type: 'CHAT', messages: [...next, { role: 'assistant', content: r.reply, sig: r.sig }], last: r });
     } catch (e) {
-      if (alive.current) setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
+      if (my !== chatTurn || !alive.current) return;
+      setError(e instanceof ApiError ? e.message : 'Something went wrong. Try again.');
+      setErrorAction(chatErrorAction(e));
     } finally {
-      if (alive.current) setBusy(false);
+      if (alive.current && my === chatTurn) setBusy(false);  // a newer send in flight keeps its own busy
     }
   };
 
@@ -98,6 +106,7 @@ export function Describe() {
   };
 
   const startOver = () => {
+    chatTurn += 1;
     dispatch({ type: 'CHAT', messages: [], last: null });
     setError(null);
     setDraft('');
@@ -162,7 +171,9 @@ export function Describe() {
                 </div>
               </div>
             )}
-            {error && <StopCard title="The chat did not answer" remedy={error} actionLabel="Try again" onAction={retry} />}
+            {error && (errorAction === 'start_over'
+              ? <StopCard title="The chat cannot go on" remedy={error} actionLabel="Start over" onAction={startOver} />
+              : <StopCard title="The chat did not answer" remedy={error} actionLabel="Try again" onAction={retry} />)}
             {options.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, paddingLeft: 2 }}>
                 {options.map((o) => (

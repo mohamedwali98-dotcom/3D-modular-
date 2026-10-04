@@ -212,9 +212,10 @@ def run_chat(messages: list[dict], transport: ChatTransport) -> dict:
     if data is None:
         return {"reply": REPHRASE, "sig": sign(_prompt(messages), REPHRASE), "options": [], "part": None, "missing": [], "spec": None,
                 "model": transport.model}
+    reply = data["reply"] if len(data["reply"]) <= MAX_CHARS else data["reply"][:MAX_CHARS - 1].rstrip() + "…"
     options = [str(o)[:80] for o in data.get("options") or [] if isinstance(o, (str, int, float))][:4]
     part, missing = filter_part(data.get("part"), user_numbers(messages))
     spec = spec_from_request(part) if part is not None and not missing else None
-    return {"reply": data["reply"], "sig": sign(_prompt(messages), data["reply"]), "options": options,
+    return {"reply": reply, "sig": sign(_prompt(messages), reply), "options": options,  # capped: it comes back next turn
             "part": part.model_dump() if part is not None else None, "missing": missing,
             "spec": spec.model_dump(mode="json") if spec is not None else None, "model": transport.model}
