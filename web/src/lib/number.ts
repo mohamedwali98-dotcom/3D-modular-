@@ -7,17 +7,18 @@ const SIZE = /(^envelope\.[xyz]_mm|\.(diameter|width|height|length|depth)_mm)$/;
 /** A typed number in millimetres, or null. A decimal comma (a French keypad) and Arabic-Indic or Persian digits
  * are read; hex, exponents and trailing letters are refused instead of half-read. */
 export function parseMm(raw: string): number | null {
-  const s = raw.trim()
+  const digits = raw.trim()
     .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660))
-    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
-    .replace(/[,٫]/g, '.');
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0));
+  if (/^-?\d{1,3},\d{3}$/.test(digits)) return null; // "1,200": 1.2 in French, 1200 in English; never guessed
+  const s = digits.replace(/[,٫]/g, '.');
   return NUMBER.test(s) ? Number(s) : null;
 }
 
 /** Why a typed value cannot be sent, or null. A size is above 0 and at most 10 000 mm; a position is any number. */
 export function fieldProblem(path: string, raw: string): string | null {
   const value = parseMm(raw);
-  if (value === null) return 'Use a number like 12.5';
+  if (value === null) return /\d,\d{3}$/.test(raw.trim()) ? 'Type 1200 or 1.2, not 1,200' : 'Use a number like 12.5';
   if (SIZE.test(path) && !(value > 0 && value <= MAX_MM)) return 'Use a size above 0 and up to 10 000 mm';
   return null;
 }

@@ -30,3 +30,13 @@ describe('shownProblems', () => {
     expect(shownProblems(drafts, new Set(['envelope.x_mm']))).toEqual({});
   });
 });
+
+describe('parseMm and thousands', () => {
+  it('refuses "1,200": 1.2 mm in French, 1200 mm in English, so it must be typed unambiguously', () => {
+    expect(parseMm('1,200')).toBeNull();
+    expect(parseMm('12,500')).toBeNull();
+    expect(parseMm('1,2')).toBe(1.2);
+    expect(parseMm('1,25')).toBe(1.25);
+    expect(parseMm('1200')).toBe(1200);
+  });
+});
