@@ -5,6 +5,7 @@ import time
 import zipfile
 from pathlib import Path
 
+import cv2
 import gradio as gr
 import numpy as np
 import pytest
@@ -622,3 +623,18 @@ def test_an_export_uses_one_part_even_if_a_rebuild_lands_meanwhile(studio, tmp_p
     monkeypatch.setattr(handlers, "export_part", export_while_a_rebuild_fails)
     exported = studio.export(sid, ExportSettings(formats=["stl"]), MeshSettings(), PrintSettings())
     assert exported.zip_path and part.key[:8] in exported.zip_path
+
+
+def test_an_analysis_that_stops_clears_the_old_review_too(studio, tmp_path):
+    """The session forgets the last analysis when a new one stops at the images: step 2 must not show its values."""
+    app = build_app(studio=studio)
+    sid = with_images(studio, tmp_path)
+    review = studio.analyze(sid, "none", AiSettings())
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    blank = tmp_path / "blank.png"
+    blank.write_bytes(cv2.imencode(".png", np.full((400, 400, 3), 255, np.uint8))[1].tobytes())
+    studio.store.get(sid).items = []
+    studio.add_images(sid, [str(blank)])
+    out = app_fn(app, "on_analyze")(sid, "none", True, False, False, False, False, 7, False, 1)
+    rows = out[2 + 1 + 3]  # walk, capture_msg, review_msg, x, y, z, values
+    assert rows == []

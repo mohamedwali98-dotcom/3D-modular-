@@ -231,8 +231,8 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
                 msg = card("Check the AI settings", str(e), "stop")
                 return [gr.update(), msg, *[gr.update()] * len(review_outputs), *[gr.update()] * len(step3_cleared)]
             r = studio.analyze(s, ref, ai)
-            if r.stage == "capture":
-                return [gr.update(), r.message_html, *[gr.update()] * len(review_outputs), *step3_cleared]
+            if r.stage == "capture":  # the session forgot the last analysis: step 2 shows nothing of it either
+                return [gr.update(), r.message_html, *show_review(Review(False, "review", "")), *step3_cleared]
             return [gr.Walkthrough(selected=1), "", *show_review(r), *step3_cleared]
 
         def keep_typed(r, boxes) -> list:
