@@ -129,7 +129,15 @@ def fuse_envelope(observations: list[Observation], user_values: dict | None = No
     for axis in "xyz":
         key, name = f"envelope.{axis}_mm", S.AXIS_NAMES[axis]
         if key in user_values:
-            values[axis], prov[key] = float(user_values[key]), "user_edited"
+            typed = float(user_values[key])
+            if not 0 < typed <= S.MAX_MM:  # asked for again by name, never a 500 from the Envelope model
+                known = {f"envelope.{a}_mm": float(user_values[f"envelope.{a}_mm"]) for a in "xyz"
+                         if a != axis and f"envelope.{a}_mm" in user_values}
+                return S.MvAbstain(stage="dimensions", reason="invalid_value",
+                                   remedy=f"The {name} must be more than 0 and at most 10 000 mm.",
+                                   partial={"known": known, "missing": [key], "suggested": {},
+                                            "provenance": dict.fromkeys(known, "user_edited")})
+            values[axis], prov[key] = typed, "user_edited"
             continue
         written = [c for c in cands[axis] if c.prov == "user_written"]
         measured = [c for c in cands[axis] if c.prov == "measured"]

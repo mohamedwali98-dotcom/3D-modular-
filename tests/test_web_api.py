@@ -633,3 +633,14 @@ def test_a_refused_setting_is_named_in_the_error():
     r = c.post("/api/export", json={"spec": spec, "settings": {"printing": {"nozzle_mm": 0.2, "layer_mm": 0.2},
                                                                  "export": {"formats": ["step"]}}})
     assert r.status_code == 422 and "layer height" in r.json()["error"].lower(), r.text
+
+
+def test_a_typed_envelope_out_of_range_asks_for_it_again_instead_of_failing():
+    job = analyze()
+    for bad in (0, -5, 20000):
+        r = c.post("/api/merge", json={"request_id": job["job_id"],
+                                        "user_values": {"envelope.x_mm": bad, "envelope.y_mm": 30, "envelope.z_mm": 20}})
+        assert r.status_code == 200, (bad, r.text)
+        abstain = r.json()["abstain"]
+        assert abstain["reason"] == "invalid_value" and "envelope.x_mm" in abstain["missing"], abstain
+        assert "width" in abstain["remedy"].lower() or "10 000" in abstain["remedy"]
