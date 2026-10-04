@@ -129,6 +129,10 @@ function HandwritingCrop({ image, url, read, fieldLabel }: CropInfo) {
   );
 }
 
+// The newest merge, kept across visits to Review: a merge sent when leaving that answers after a newer one
+// (sent after coming back) must not move the analysis, or `applied`, backwards.
+const mergeTurn = { n: 0 };
+
 /** Review screen: every number the pipeline produced, with its provenance, editable and re-merged live. */
 export function Review() {
   const { state, dispatch } = useStore();
@@ -154,7 +158,6 @@ export function Review() {
   const envRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const mergeTimer = useRef<number | undefined>(undefined);
   const pending = useRef(false);
-  const mergeSeq = useRef(0);
   const alive = useRef(true);
   const latest = useRef({ typed, rejected, requestId });
   latest.current = { typed, rejected, requestId };
@@ -167,19 +170,19 @@ export function Review() {
     const sent: Sent = { typed: latest.current.typed, rejected: latest.current.rejected };
     const id = latest.current.requestId;
     if (!id) return;
-    const my = ++mergeSeq.current;
+    const my = ++mergeTurn.n;
     if (alive.current) { setMerging(true); setMergeErr(null); }
     merge({ request_id: id, user_values: sent.typed, accepted: [], rejected: sent.rejected })
       .then((a) => {
-        if (my !== mergeSeq.current) return;
+        if (my !== mergeTurn.n) return;
         dispatch({ type: 'ANALYSIS', analysis: a, applied: sent });
       })
       .catch((e: unknown) => {
-        if (my !== mergeSeq.current || !alive.current) return;
+        if (my !== mergeTurn.n || !alive.current) return;
         if (e instanceof ApiError && e.status === 404) setExpired(true);
         else setMergeErr(errText(e));
       })
-      .finally(() => { if (my === mergeSeq.current && alive.current) setMerging(false); });
+      .finally(() => { if (my === mergeTurn.n && alive.current) setMerging(false); });
   }, [dispatch]);
 
   // Debounced re-merge: 500 ms after the last edit or reject toggle.
