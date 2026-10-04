@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ApiError, buildModel, exportFiles, type ExportSettings } from '../api/client';
-import type { ExportResult, GeometrySettings, PrintSettings } from '../api/types';
+import { ApiError, buildModel, exportFiles, getStatus, type ExportSettings } from '../api/client';
+import type { ExportResult, GeometrySettings, PrintSettings, Status } from '../api/types';
 import { MatchRing } from '../components/MatchRing';
 import { StopCard } from '../components/StopCard';
 import { Viewer, type DimLabel } from '../components/Viewer';
@@ -9,6 +9,7 @@ import { layerMax, withNozzle } from '../lib/print';
 import { viewerModel } from '../lib/viewer';
 import { BADGE, envelopeRows, isCheck } from '../lib/provenance';
 import { useStore } from '../state/store';
+import { formatReady } from '../lib/status';
 
 // From Model v2.dc.html
 const FORMATS: [string, string, string][] = [
@@ -71,6 +72,9 @@ export function Model() {
   const model = viewerModel(state.model, state.modelSpec, spec, building);
 
   const [sel, setSel] = useState<Record<string, boolean>>({ stl: true, step: true, '3mf': true, pdf: true, gcode: true });
+  const [status, setStatus] = useState<Status | null>(null);
+  useEffect(() => { getStatus().then(setStatus).catch(() => { /* unknown: every format stays offered */ }); }, []);
+  const chosen = (k: string) => !!sel[k] && formatReady(k, status);
   const [mesh, setMesh] = useState<Mesh>('normal');
   const [print, setPrint] = useState<Print>(PRINT0);
   const [drawer, setDrawer] = useState(false);
@@ -176,7 +180,7 @@ export function Model() {
   const viewerTag = rebuilt ? 'REBUILT ✓' : 'LIVE 3D · part.step';
   const rebuildTag = rebuilt ? 'REBUILT ✓' : building ? '[ BUILDING… ]' : '[ LIVE ]';
   const finishOff = g.finish === 'none';
-  const nSel = FORMATS.filter(([k]) => sel[k]).length;
+  const nSel = FORMATS.filter(([k]) => chosen(k)).length;
 
   const openDrawer = () => { setDrawer(true); setDp(false); requestAnimationFrame(() => requestAnimationFrame(() => setDp(true))); };
   const setP = (patch: Partial<Print>) => setPrint((p) => ({ ...p, ...patch }));
@@ -192,7 +196,7 @@ export function Model() {
         material: print.material, nozzle_mm: +print.nozzle, layer_mm: print.layer, infill_pct: print.infill, infill_pattern: print.pattern,
         perimeters: print.perims, supports: print.supports, brim_mm: print.brim, scale_pct: print.scale,
       },
-      export: { formats: FORMATS.filter(([k]) => sel[k]).map(([k]) => k) },
+      export: { formats: FORMATS.filter(([k]) => chosen(k)).map(([k]) => k) },
     };
     try {
       const r = await exportFiles({ spec, settings });
@@ -326,9 +330,11 @@ export function Model() {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0,1fr))', gap: 6 }}>
                 {FORMATS.map(([k, ext, purpose]) => {
-                  const on = !!sel[k];
+                  const on = chosen(k);
+                  const ready = formatReady(k, status);
                   return (
-                    <button key={k} type="button" aria-pressed={on} onClick={() => setSel((s) => ({ ...s, [k]: !s[k] }))}
+                    <button key={k} type="button" aria-pressed={on} disabled={!ready} title={ready ? undefined : 'Not installed on this server'}
+                      onClick={() => setSel((s) => ({ ...s, [k]: !s[k] }))}
                       style={{ position: 'relative', height: 52, padding: '7px 9px', boxSizing: 'border-box', borderRadius: 10, border: `1.5px solid ${on ? 'var(--accent)' : 'var(--line)'}`, background: on ? 'color-mix(in oklch, var(--accent) 12%, transparent)' : 'transparent', color: 'var(--ink)', font: 'inherit', textAlign: 'left', cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                       <span style={{ fontFamily: MONO, fontSize: 13, fontWeight: 500 }}>{ext}</span>
                       <span style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{purpose}</span>

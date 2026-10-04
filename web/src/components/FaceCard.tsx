@@ -91,7 +91,6 @@ export function FaceCard({ label, outline, width, height, filledBy, rejected, on
             background: rejected ? 'var(--ai)' : 'transparent', color: rejected ? 'var(--raised)' : 'var(--ai)',
             font: 'inherit', fontSize: 13, fontWeight: 500, cursor: 'pointer',
           }}>{rejected ? 'Undo reject' : 'Reject'}</button>
-          <button type="button" style={{ flex: 1, height: 40, borderRadius: 10, border: '1.5px dashed var(--ai)', background: 'transparent', color: 'var(--ai)', font: 'inherit', fontSize: 13, cursor: 'pointer', whiteSpace: 'nowrap' }}>Redraw</button>
         </div>
       )}
     </div>

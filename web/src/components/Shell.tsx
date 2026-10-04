@@ -109,10 +109,12 @@ export function Shell({ nav, onNav, onAbout, children }: ShellProps) {
           </nav>
         </div>
         <div style={{ marginTop: 'auto', display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button onClick={onAbout} className="s2c-hover" style={{ display: 'flex', alignItems: 'center', justifyContent: jc, gap: 12, height: 44, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink)', font: 'inherit', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-            <span style={{ width: 18, height: 18, flex: 'none', border: '1.5px solid var(--ink)', borderRadius: '50%', boxSizing: 'border-box', display: 'grid', placeItems: 'center', fontFamily: MONO, fontSize: 10 }}>i</span>
-            {ex && <span>How this was made</span>}
-          </button>
+          {onAbout && (
+            <button onClick={onAbout} className="s2c-hover" style={{ display: 'flex', alignItems: 'center', justifyContent: jc, gap: 12, height: 44, padding: '0 12px', borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', color: 'var(--ink)', font: 'inherit', fontSize: 14, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              <span style={{ width: 18, height: 18, flex: 'none', border: '1.5px solid var(--ink)', borderRadius: '50%', boxSizing: 'border-box', display: 'grid', placeItems: 'center', fontFamily: MONO, fontSize: 10 }}>i</span>
+              {ex && <span>How this was made</span>}
+            </button>
+          )}
           {ex ? (
             <div role="radiogroup" aria-label="Theme" style={{ display: 'flex', gap: 4, padding: 4, borderRadius: 11, background: 'var(--inset)' }}>
               <button onClick={() => setTheme('dark')} aria-checked={dark} role="radio" style={{ flex: 1, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 8, border: 'none', background: dark ? 'var(--raised)' : 'transparent', boxShadow: dark ? 'var(--shadow)' : 'none', color: 'var(--ink)', font: 'inherit', fontSize: 13, cursor: 'pointer' }}>
