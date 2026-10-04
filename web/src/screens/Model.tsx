@@ -6,6 +6,7 @@ import { StopCard } from '../components/StopCard';
 import { Viewer, type DimLabel } from '../components/Viewer';
 import { EXPIRED } from '../lib/abstain';
 import { layerMax, withNozzle } from '../lib/print';
+import { viewerModel } from '../lib/viewer';
 import { BADGE, envelopeRows, isCheck } from '../lib/provenance';
 import { useStore } from '../state/store';
 
@@ -58,7 +59,6 @@ const CSS = `
 export function Model() {
   const { state, dispatch } = useStore();
   const spec = state.analysis?.spec ?? null;
-  const model = state.model;
   const g = state.geometry;
 
   const [dims, setDims] = useState(true);
@@ -68,6 +68,7 @@ export function Model() {
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
+  const model = viewerModel(state.model, state.modelSpec, spec, building);
 
   const [sel, setSel] = useState<Record<string, boolean>>({ stl: true, step: true, '3mf': true, pdf: true, gcode: true });
   const [mesh, setMesh] = useState<Mesh>('normal');
@@ -244,7 +245,9 @@ export function Model() {
               <span style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)' }} />{viewerTag}
             </div>
             {warnings.map((w, i) => <span key={i} style={chip}><span aria-hidden="true">!</span>{w}</span>)}
-            {buildErr && <span role="alert" style={{ ...chip, border: '1.5px dashed var(--stop)', color: 'var(--stop)' }}>{buildErr}</span>}
+            {buildErr && <span role="alert" style={{ ...chip, border: '1.5px dashed var(--stop)', color: 'var(--stop)' }}>{buildErr}
+              <button type="button" onClick={() => { void runBuild(g, false); }} style={{ marginLeft: 8, border: 'none', background: 'none', padding: 0, color: 'inherit', font: 'inherit', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>Retry</button>
+            </span>}
           </div>
 
           <div style={{ position: 'absolute', right: 18, top: 18, display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 10 }}>
