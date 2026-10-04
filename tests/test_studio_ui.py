@@ -362,7 +362,7 @@ def test_on_geometry_wiring(studio):
 
     # failure path: nothing analyzed yet, still returns exactly as many values as the wired outputs
     empty_sid = studio.store.new()
-    out = on_geometry(empty_sid, True, "medium", "none", 1.0, "all_vertical")
+    out = on_geometry(empty_sid, "", "", "", True, "medium", "none", 1.0, "all_vertical")
     assert len(out) == n_outputs
 
     # success path: analyze + build the example, then change the clearance
@@ -371,7 +371,7 @@ def test_on_geometry_wiring(studio):
     review = studio.analyze(sid, "none", AiSettings())
     review, model = studio.build(sid, {"x": "50", "y": "30", "z": "20"}, review.rows, [], GeometrySettings())
     assert model.ok and review.rows  # the example has a hole, so the values table is not empty
-    out = on_geometry(sid, True, "coarse", "none", 1.0, "all_vertical")
+    out = on_geometry(sid, "50", "30", "20", True, "coarse", "none", 1.0, "all_vertical")
     assert len(out) == n_outputs
     refreshed_rows = out[-1]  # the values Dataframe is the last wired output
     assert refreshed_rows and refreshed_rows != review.rows  # carries the new snapped diameter, not the stale one
