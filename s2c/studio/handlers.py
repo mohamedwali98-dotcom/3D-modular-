@@ -478,8 +478,8 @@ class Studio:
             elif session.shown.get(path) is None or abs(value - float(session.shown[path])) > 1e-9:
                 edits[path] = value
         for path, row in zip(session.row_paths, rows or []):
-            text = str(row[1]).strip() if len(row) > 1 else ""
-            if not text:
+            text = str(row[1]).strip() if len(row) > 1 and row[1] is not None else ""
+            if text in ("", "None", "nan"):  # an emptied number cell, however Gradio sends it: back to the machine value
                 edits.pop(path, None)
                 continue
             value = parse_size(text)
@@ -503,6 +503,9 @@ class Studio:
             edits = {k: v for k, v in edits.items() if not k.startswith("features[")}
         session.edits, session.rejected, session.geometry = edits, tuple(rejected or ()), geometry
         review = self._review(session, self._fuse(session))
+        if session.spec is not None:  # a value the fuse left out (said once in the warnings) is not kept to warn again
+            session.edits = {k: v for k, v in session.edits.items()
+                             if not k.startswith("features[") or session.spec.provenance.get(k) == "user_edited"}
         if cleared:
             note = "The feature values you typed were cleared because the rejected faces changed. Check them again."
             review.warnings_html = bullet_html("Check", [note], "check") + review.warnings_html

@@ -405,7 +405,9 @@ def test_rejected_face_stays_rejected(tmp_path, monkeypatch):
     assert out2[7]["value"] == ["right"]
 
 
-def test_cleared_feature_cell_reverts(studio, tmp_path):
+@pytest.mark.parametrize("empty", ["", None, "None", float("nan")])
+def test_cleared_feature_cell_reverts(studio, tmp_path, empty):
+    """However Gradio sends an emptied number cell, the edit goes and the machine value comes back."""
     sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
     top = tmp_path / "top-hole.png"
     top.write_bytes(sketch(600, 100, circles=((200, 50, 20),)))
@@ -427,7 +429,7 @@ def test_cleared_feature_cell_reverts(studio, tmp_path):
     assert model.ok and session.edits[path] == original + 1
 
     cleared = [list(r) for r in review.rows]
-    cleared[idx][1] = ""
+    cleared[idx][1] = empty
     review, model = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, cleared, [], GeometrySettings())
     assert model.ok
     assert path not in session.edits
@@ -542,3 +544,25 @@ def test_an_unconfirmed_sheet_scale_stays_unconfirmed(tmp_path, monkeypatch):
                                         numbers=False, scale_confirmed=False)]
     studio.analyze(sid, "none", AiSettings())
     assert seen and seen[0].scale_confirmed is False
+
+
+def test_a_left_out_edit_is_forgotten(studio, tmp_path):
+    """A typed size the part cannot hold is left out once and said once: it does not stay in the edits to warn on
+    every Build."""
+    sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
+    top = tmp_path / "top-hole.png"
+    top.write_bytes(sketch(600, 100, circles=((200, 50, 20),)))
+    studio.add_images(sid, [str(top)])
+    item = studio.store.get(sid).items[-1]
+    studio.set_face(sid, item.id, "top")
+    studio.set_kind(sid, item.id, "sketch")
+    review = studio.analyze(sid, "none", AiSettings())
+    review, _ = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    session = studio.store.get(sid)
+    idx = next(i for i, r in enumerate(review.rows) if "diameter" in r[0].lower())
+    edited = [list(r) for r in review.rows]
+    edited[idx][1] = 20000
+    review, _ = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, edited, [], GeometrySettings())
+    assert "out of range" in review.warnings_html and session.row_paths[idx] not in session.edits
+    review, _ = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    assert "out of range" not in review.warnings_html
