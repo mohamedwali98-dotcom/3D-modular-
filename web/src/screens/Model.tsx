@@ -100,7 +100,7 @@ export function Model() {
     try {
       const m = await buildModel({ request_id: live.current.requestId, spec: s, geometry });
       if (my !== seq.current) return;
-      dispatch({ type: 'MODEL', model: m, spec: s });
+      dispatch({ type: 'MODEL', model: m, spec: s, requestId: live.current.requestId ?? '' });
       if (flash) {
         setRebuilt(true);
         window.clearTimeout(rbTimer.current);

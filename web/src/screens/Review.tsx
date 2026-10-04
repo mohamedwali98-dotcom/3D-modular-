@@ -310,9 +310,9 @@ export function Review() {
     setBuildAbstain(null);
     try {
       const result = await buildModel({ request_id: requestId, spec, geometry });
-      dispatch({ type: 'MODEL', model: result, spec });
+      dispatch({ type: 'MODEL', model: result, spec, requestId: requestId ?? '' });
       if (result.abstain) setBuildAbstain(result.abstain);
-      else dispatch({ type: 'GOTO', screen: 'model' });
+      else if (alive.current) dispatch({ type: 'GOTO', screen: 'model' });  // never pull a user who already left
     } catch (e) {
       if (e instanceof ApiError && e.status === 404) setExpired(true);
       else setBuildErr(errText(e));

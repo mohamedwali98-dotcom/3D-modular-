@@ -34,6 +34,14 @@ describe('store', () => {
     expect(s.typed).toEqual({ 'envelope.x_mm': 50 });
   });
 
+  it('ignores a model built for an analysis the user has left', () => {
+    const s0: State = { ...initialState, analysis: analysis('j2') };
+    const late = reducer(s0, { type: 'MODEL', model: { key: 'old' } as ModelResult, spec: { version: 'mv1' } as Spec, requestId: 'j1' });
+    expect(late.model).toBeNull();
+    const now = reducer(s0, { type: 'MODEL', model: { key: 'new' } as ModelResult, spec: { version: 'mv1' } as Spec, requestId: 'j2' });
+    expect(now.model?.key).toBe('new');
+  });
+
   it('remembers the spec a model was built from', () => {
     const spec = { version: 'mv1' } as Spec;
     const model = { key: 'k' } as ModelResult;

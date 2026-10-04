@@ -50,7 +50,7 @@ export type Action =
   | { type: 'TYPE_VALUE'; path: string; value: number }
   | { type: 'TOGGLE_REJECT'; face: Face }
   | { type: 'SET_GEOMETRY'; patch: Partial<GeometrySettings> }
-  | { type: 'MODEL'; model: ModelResult | null; spec?: Spec | null }
+  | { type: 'MODEL'; model: ModelResult | null; spec?: Spec | null; requestId?: string }
   | { type: 'CHAT'; messages: ChatMessage[]; last?: ChatResponse | null }
   | { type: 'GOTO'; screen: Screen }
   | { type: 'RESET' };
@@ -126,6 +126,8 @@ export function reducer(state: State, action: Action): State {
     case 'SET_GEOMETRY':
       return { ...state, geometry: { ...state.geometry, ...action.patch } };
     case 'MODEL':
+      // a build that finishes after the user moved to another analysis must not take over
+      if (action.requestId !== undefined && action.requestId !== (state.analysis?.request_id ?? '')) return state;
       return { ...state, model: action.model, modelSpec: action.model ? action.spec ?? null : null };
     case 'CHAT':
       return { ...state, chat: { messages: action.messages, last: action.last === undefined ? state.chat.last : action.last } };
