@@ -5,6 +5,7 @@ import { resetDeadline } from '../components/Shell';
 import { CoverageCube } from '../components/CoverageCube';
 import { StopCard } from '../components/StopCard';
 import { MAX_ITEMS, toCaptureItem, useStore, type CaptureItem, type CaptureKind, type CaptureMode, type Projection } from '../state/store';
+import { readyPhoto } from '../lib/photo';
 
 const MONO = "'Geist Mono', monospace";
 const SILK = "'Silkscreen', monospace";
@@ -119,9 +120,10 @@ export function Capture() {
   const full = state.items.length >= maxItems;
   const room = maxItems - state.items.length;
 
-  const addFiles = useCallback((files: FileList | File[]) => {
-    const arr = Array.from(files).filter((f) => f.type.startsWith('image/'));
-    if (!arr.length) return;
+  const addFiles = useCallback(async (files: FileList | File[]) => {
+    const picked = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (!picked.length) return;
+    const arr = await Promise.all(picked.map(readyPhoto));  // shrunk or turned into JPEG before any upload
     if (sheet) {
       // One sheet at a time: a new drop replaces whatever was there.
       for (const it of state.items) dispatch({ type: 'REMOVE_ITEM', id: it.id });
