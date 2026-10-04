@@ -182,3 +182,17 @@ def test_the_sweep_deletes_old_folders_only(tmp_path):
     os.utime(old, (past, past))
     sweep(tmp_path)
     assert not old.exists() and fresh.exists()
+
+
+def test_a_drawing_writer_failure_keeps_the_other_files(tmp_path, monkeypatch):
+    """A writer that fails on an unusual solid loses its own format, said in the warnings, never the whole export."""
+    from s2c.multiview import artifacts as A
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("HLR failed")
+
+    monkeypatch.setattr(A, "write_drawings", broken)
+    monkeypatch.setattr("s2c.multiview.slice.find_slicer", lambda: None)
+    part = A.build_part(SPEC, None, tmp_path)
+    res = A.export_part(part, ["stl", "pdf"])
+    assert set(res.files) == {"stl"} and any("PDF" in w and "drawing" in w for w in res.warnings), res.warnings

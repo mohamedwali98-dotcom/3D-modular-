@@ -21,6 +21,7 @@ from uuid import uuid4
 import cadquery as cq
 import numpy as np
 
+from s2c import obs
 from s2c.config import data_path
 from s2c.multiview import spec as S
 from s2c.multiview.blend import write_blend
@@ -191,15 +192,24 @@ def export_part(part: Part, formats, mesh: MeshSettings | None = None, printing:
         warnings: list[str] = []
         seconds = grams = None
         if "blend" in wanted:
-            files["blend"], more = write_blend(made["obj"], part.folder / f"mesh-{mesh.quality}")
-            warnings += more
+            try:
+                files["blend"], more = write_blend(made["obj"], part.folder / f"mesh-{mesh.quality}")
+                warnings += more
+            except Exception as e:  # noqa: BLE001 - one writer failing loses its own file, never the whole export
+                obs.fallback("blend_writer", e)
+                warnings.append("The Blender scene could not be written; the other files are ready.")
         drawings = [f for f in DRAWING_FORMATS if f in wanted]
         if drawings:
             folder = part.folder / "drawing"
             missing = [f for f in drawings if not (folder / DRAWING_FILES[f]).exists()]
-            if missing:
-                write_drawings(part.solid, part.spec, folder, missing)
-            files.update({f: folder / DRAWING_FILES[f] for f in drawings})
+            try:
+                if missing:
+                    write_drawings(part.solid, part.spec, folder, missing)
+                files.update({f: folder / DRAWING_FILES[f] for f in drawings})
+            except Exception as e:  # noqa: BLE001 - an unusual solid can defeat the 2D projection: the rest still goes
+                obs.fallback("drawing_writer", e)
+                names = ", ".join(f.upper() for f in drawings)
+                warnings.append(f"The {names} drawing could not be written for this part; the other files are ready.")
         if "gcode" in wanted:
             gcode, seconds, grams, more = _gcode(part, printing, slicer, profile)
             warnings += more
