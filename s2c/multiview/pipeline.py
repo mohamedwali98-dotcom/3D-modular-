@@ -168,7 +168,13 @@ class MvPipeline:
 
     def _label(self, item: ImageInput) -> MvLabel | S.MvAbstain:
         if self.chat is not None:
-            return label_image(item.data, self.chat, item.face, item.kind)
+            try:
+                return label_image(item.data, self.chat, item.face, item.kind)
+            except Exception as e:  # noqa: BLE001 - a labeling outage falls back, never breaks the analysis
+                obs.fallback("label_chat", e)
+                if not item.face:
+                    return S.MvAbstain(stage="label", reason="label_unavailable",
+                                       remedy="The labeling service did not answer. Pick each image's face, or try again.")
         if item.face:
             return hint_label(item.face, item.kind or "sketch")
         return S.MvAbstain(stage="label", reason="face_unknown", remedy="Tell us which face this photo shows.")

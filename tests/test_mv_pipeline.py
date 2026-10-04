@@ -274,3 +274,16 @@ def test_two_fuses_of_one_analysis_never_run_at_once(monkeypatch):
     for t in threads:
         t.join()
     assert most[0] == 1
+
+
+def test_a_labeling_outage_falls_back_to_the_users_tags_or_stops_with_a_remedy():
+    """The vision model timing out never crashes an analysis: a face the user picked is used as given; an untagged
+    image stops with a sentence saying what to do."""
+    def down(messages):
+        raise TimeoutError("Request timed out.")
+
+    pipe = MvPipeline(chat=down)
+    tagged = pipe.observe([ImageInput(sketch(600, 400), "front", "sketch")])
+    assert not isinstance(tagged, MvAbstain) and tagged.observations[0].face == "front"
+    untagged = pipe.observe([ImageInput(sketch(600, 400), None, None)])
+    assert isinstance(untagged, MvAbstain) and untagged.reason == "label_unavailable"
