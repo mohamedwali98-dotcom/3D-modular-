@@ -373,7 +373,7 @@ export function Analyzing() {
         fails += 1;
         if (fails === 1) failingSince = Date.now();
         const msg = e instanceof ApiError ? e.message : 'Could not reach the server.';
-        const gone = e instanceof ApiError && (e.status === 404 || e.status === 410);
+        const gone = e instanceof ApiError && (e.status === 404 || e.status === 410 || e.status === 401);  // 401: no token given
         const wait = gone ? null : nextPoll(fails, Date.now() - failingSince);
         if (wait === null) {
           setFatal(msg);

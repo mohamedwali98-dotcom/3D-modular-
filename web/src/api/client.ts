@@ -1,7 +1,7 @@
 import type {
   AiSettings, Analysis, ChatMessage, ChatResponse, Example, ExportResult, Face, GeometrySettings, Job, ModelResult, PrintSettings, Spec, Status,
 } from './types';
-import { storeToken, storedToken, withToken } from '../lib/auth';
+import { askToken, storedToken, withToken } from '../lib/auth';
 
 export class ApiError extends Error {
   status: number;
@@ -38,14 +38,9 @@ async function request<T>(path: string, init?: RequestInit, asked = false): Prom
     const err = body && typeof body === 'object' && typeof (body as { error?: unknown }).error === 'string'
       ? (body as { error: string }).error
       : FALLBACK[res.status] ?? `Something went wrong (${res.status}). Try again.`;
-    if (res.status === 401 && !asked) {  // the server wants its access token: ask once, then retry
-      const token = window.prompt(`${err}
-
-Access token:`)?.trim();
-      if (token) {
-        storeToken(token);
-        return request<T>(path, init, true);
-      }
+    if (res.status === 401 && !asked) {  // the server wants its access token: ask (once for all), then retry
+      const reason = body && typeof body === 'object' ? (body as { reason?: string }).reason : undefined;
+      if (await askToken(err, undefined, reason)) return request<T>(path, init, true);
     }
     throw new ApiError(res.status, err);
   }

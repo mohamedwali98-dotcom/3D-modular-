@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { withToken } from './auth';
+import { askToken, resetTokenPrompt, withToken } from './auth';
 
 describe('access token', () => {
   it('sends the token as a bearer header, keeping the other headers', () => {
@@ -12,5 +12,23 @@ describe('access token', () => {
   it('leaves the request as it is without a token', () => {
     const init = { method: 'GET' };
     expect(withToken(init, null)).toBe(init);
+  });
+});
+
+describe('asking for the access token', () => {
+  it('asks once for every request refused at the same time, and remembers a refusal', async () => {
+    resetTokenPrompt();
+    let asked = 0;
+    const ask = () => { asked += 1; return null; };
+    const [a, b] = await Promise.all([askToken('Enter the access token.', ask), askToken('Enter the access token.', ask)]);
+    expect([a, b, asked]).toEqual([null, null, 1]);
+    expect(await askToken('Enter the access token.', ask)).toBeNull();
+    expect(asked).toBe(1);
+  });
+  it('never asks for a token the server does not have', async () => {
+    resetTokenPrompt();
+    let asked = 0;
+    expect(await askToken('Set S2C_ACCESS_TOKEN', () => { asked += 1; return 'x'; }, 'no_token')).toBeNull();
+    expect(asked).toBe(0);
   });
 });

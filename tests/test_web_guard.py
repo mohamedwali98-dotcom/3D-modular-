@@ -132,3 +132,9 @@ def test_a_call_relayed_by_a_local_proxy_counts_as_the_device_it_came_from():
     assert own.status_code == 404
     spoofed = client(LOCAL).post("/api/merge", json=UNKNOWN_JOB, headers={"X-Forwarded-For": "127.0.0.1, 192.168.1.23"})
     assert spoofed.status_code == 401  # the proxy appends the real peer last: an earlier "127.0.0.1" proves nothing
+
+
+def test_a_refusal_says_whether_a_token_would_help(monkeypatch):
+    assert client(REMOTE).post("/api/merge", json=UNKNOWN_JOB).json()["reason"] == "no_token"
+    monkeypatch.setenv("S2C_ACCESS_TOKEN", "s3cret-token")
+    assert client(REMOTE, "wrong").post("/api/merge", json=UNKNOWN_JOB).json()["reason"] == "bad_token"

@@ -112,7 +112,8 @@ def install_guards(app: FastAPI) -> None:
         why = refusal(request)
         if why is not None:
             obs.count("s2c_refused_total", reason="token")
-            return JSONResponse({"error": why}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
+            reason = "no_token" if why == NO_TOKEN else "bad_token"  # no_token: no token would help, never ask
+            return JSONResponse({"error": why, "reason": reason}, status_code=401, headers={"WWW-Authenticate": "Bearer"})
         limit = LIMITS.get((request.method, path))
         host = caller(request)  # each device behind a local proxy has its own budget
         if limit is not None and not LIMITER.allow((host, path), limit):
