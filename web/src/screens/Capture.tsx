@@ -6,7 +6,7 @@ import { CoverageCube } from '../components/CoverageCube';
 import { StopCard } from '../components/StopCard';
 import { MAX_ITEMS, toCaptureItem, useStore, type CaptureItem, type CaptureKind, type CaptureMode, type Projection } from '../state/store';
 import { readyPhoto } from '../lib/photo';
-import { aiReady } from '../lib/status';
+import { aiReady, aiShownOn } from '../lib/status';
 
 const MONO = "'Geist Mono', monospace";
 const SILK = "'Silkscreen', monospace";
@@ -300,11 +300,11 @@ export function Capture() {
             </button>
             {aiOpen && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <Toggle label="Read handwriting with the vision model" checked={state.ai.use_reader} onChange={(v) => setAi({ use_reader: v })} disabled={!aiReady('use_reader', status)} />
-                <Toggle label="Draw missing faces with Qwen-Image" hint="Sends your images to a hosted service" checked={state.ai.use_qwen_image} onChange={(v) => setAi({ use_qwen_image: v })} disabled={!aiReady('use_qwen_image', status)} />
-                <Toggle label="Rescue sketches with an open outline" hint="Sends your images to a hosted service (Qwen-Image)" checked={state.ai.use_rescue} onChange={(v) => setAi({ use_rescue: v })} disabled={!aiReady('use_rescue', status)} />
-                <Toggle label="TripoSR fallback for missing faces" hint="Sends your images to a hosted service when no local GPU runs it" checked={state.ai.use_triposr} onChange={(v) => setAi({ use_triposr: v })} disabled={!aiReady('use_triposr', status)} />
-                <Toggle label="Hole depth from photos (Solaria)" hint="Photos only; adds 60–180 s. Sends your images to a hosted service" checked={state.ai.use_solaria} onChange={(v) => setAi({ use_solaria: v })} disabled={!aiReady('use_solaria', status)} />
+                <Toggle label="Read handwriting with the vision model" checked={aiShownOn('use_reader', state.ai, status)} onChange={(v) => setAi({ use_reader: v })} disabled={!aiReady('use_reader', status)} />
+                <Toggle label="Draw missing faces with Qwen-Image" hint="Sends your images to a hosted service" checked={aiShownOn('use_qwen_image', state.ai, status)} onChange={(v) => setAi({ use_qwen_image: v })} disabled={!aiReady('use_qwen_image', status)} />
+                <Toggle label="Rescue sketches with an open outline" hint="Sends your images to a hosted service (Qwen-Image)" checked={aiShownOn('use_rescue', state.ai, status)} onChange={(v) => setAi({ use_rescue: v })} disabled={!aiReady('use_rescue', status)} />
+                <Toggle label="TripoSR fallback for missing faces" hint="Sends your images to a hosted service when no local GPU runs it" checked={aiShownOn('use_triposr', state.ai, status)} onChange={(v) => setAi({ use_triposr: v })} disabled={!aiReady('use_triposr', status)} />
+                <Toggle label="Hole depth from photos (Solaria)" hint="Photos only; adds 60–180 s. Sends your images to a hosted service" checked={aiShownOn('use_solaria', state.ai, status)} onChange={(v) => setAi({ use_solaria: v })} disabled={!aiReady('use_solaria', status)} />
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--muted)', flex: 1 }}>
                     Seed

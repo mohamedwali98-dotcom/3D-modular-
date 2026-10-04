@@ -32,3 +32,16 @@ describe('asking for the access token', () => {
     expect(asked).toBe(0);
   });
 });
+
+describe('a dismissed token prompt', () => {
+  it('is remembered for a burst of requests, then asked again: an Esc never locks the app until a reload', async () => {
+    resetTokenPrompt();
+    let asked = 0;
+    const ask = () => { asked += 1; return null; };
+    await askToken('Enter the access token.', ask, undefined, 0);
+    await askToken('Enter the access token.', ask, undefined, 5_000);
+    expect(asked).toBe(1);
+    await askToken('Enter the access token.', ask, undefined, 20_000);
+    expect(asked).toBe(2);
+  });
+});

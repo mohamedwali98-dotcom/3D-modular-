@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Status } from '../api/types';
-import { aiReady, formatReady } from './status';
+import { aiReady, aiShownOn, formatReady } from './status';
 
 const status = (p: Partial<Status['providers']>): Status => ({
   providers: { vision: false, reader: false, qwen_image: false, triposr: false, solaria: false, slicer: false, blender: false, ...p },
@@ -22,5 +22,14 @@ describe('what this server can do', () => {
   it('blocks nothing before the status has loaded', () => {
     expect(formatReady('gcode', null)).toBe(true);
     expect(aiReady('use_solaria', null)).toBe(true);
+  });
+});
+
+describe('aiShownOn', () => {
+  it('never shows a helper ticked when this server cannot run it', () => {
+    const ai = { use_reader: true, use_qwen_image: true } as Parameters<typeof aiShownOn>[1];
+    expect(aiShownOn('use_reader', ai, status({}))).toBe(false);
+    expect(aiShownOn('use_reader', ai, status({ reader: true }))).toBe(true);
+    expect(aiShownOn('use_qwen_image', ai, null)).toBe(true);
   });
 });

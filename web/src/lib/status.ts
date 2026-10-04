@@ -20,3 +20,8 @@ export function aiReady(setting: keyof AiSettings, status: Status | null): boole
   const needs = AI_NEEDS[setting];
   return !needs || !status || needs.some((p) => status.providers[p]);
 }
+
+/** A helper's switch as shown: never ticked when this server cannot run it (a locked, ticked box reads as "on"). */
+export function aiShownOn(setting: keyof AiSettings, ai: AiSettings, status: Status | null): boolean {
+  return !!ai[setting] && aiReady(setting, status);
+}

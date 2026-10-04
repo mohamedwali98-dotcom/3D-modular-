@@ -17,18 +17,20 @@ export function withToken(init: RequestInit | undefined, token: string | null): 
 }
 
 let asking: Promise<string | null> | null = null;
-let declined = false;
+let declinedAt: number | null = null;
+const DECLINE_MS = 15_000; // a dismissed prompt covers the burst of requests behind it, not the rest of the visit
 
 /** The token after asking for it: one prompt for every request refused at the same time (polling never stacks
- * prompts), a refusal remembered until the page reloads, and no prompt at all when the server has no token
- * (`reason` "no_token": only this computer is served, so no token would help). */
+ * prompts), a dismissal remembered for the burst behind it (asked again after DECLINE_MS, so an Esc never locks
+ * the app until a reload), and no prompt at all when the server has no token (`reason` "no_token": only this
+ * computer is served, so no token would help). */
 export function askToken(message: string, ask: (text: string) => string | null = (text) => window.prompt(text),
-  reason?: string): Promise<string | null> {
-  if (reason === 'no_token' || declined) return Promise.resolve(null);
+  reason?: string, now: number = Date.now()): Promise<string | null> {
+  if (reason === 'no_token' || (declinedAt !== null && now - declinedAt < DECLINE_MS)) return Promise.resolve(null);
   asking ??= Promise.resolve().then(() => {
     const token = ask(`${message}\n\nAccess token:`)?.trim() || null;
     if (token) storeToken(token);
-    else declined = true;
+    declinedAt = token ? null : now;
     return token;
   }).finally(() => { asking = null; });
   return asking;
@@ -37,5 +39,5 @@ export function askToken(message: string, ask: (text: string) => string | null =
 /** For tests: forget a refusal and any prompt in flight. */
 export function resetTokenPrompt(): void {
   asking = null;
-  declined = false;
+  declinedAt = null;
 }
