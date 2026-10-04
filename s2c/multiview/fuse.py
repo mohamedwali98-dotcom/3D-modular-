@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from s2c.multiview import spec as S
-from s2c.multiview.edits import left_out
+from s2c.multiview.edits import left_out, out_of_range
 from s2c.multiview.ocr import Linked, Reading
 from s2c.multiview.outline import PixelOutline, to_face_mm
 from s2c.multiview.raster import iou, outline_mask
@@ -630,6 +630,11 @@ def assemble(env: S.Envelope, env_prov: dict, outlines: dict, feats: list[dict],
         if name == "keep":  # the user took a misread feature out: "features[k].keep" = 0
             if not value:
                 removed.add(k)
+            continue
+        problem = out_of_range(feature, name, float(value))
+        if problem:
+            if problem not in data["warnings"]:
+                data["warnings"].append(problem)
             continue
         feature[name] = float(value)
         data["provenance"][path] = "user_edited"

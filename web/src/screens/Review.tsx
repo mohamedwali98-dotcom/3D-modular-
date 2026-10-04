@@ -6,6 +6,7 @@ import { StopCard } from '../components/StopCard';
 import { EXPIRED, isDimensionAbstain } from '../lib/abstain';
 import { snappedLabel } from '../lib/snap';
 import { listPhrase } from '../lib/words';
+import { dropFeatureDrafts, fieldProblem, parseMm } from '../lib/number';
 import { BADGE, countChecks, featureRows, isCheck, provOf, type BadgeKey } from '../lib/provenance';
 import { useStore } from '../state/store';
 
@@ -139,6 +140,8 @@ export function Review() {
   const [open, setOpen] = useState<string | null>(null);
   const [hwOpen, setHwOpen] = useState(true);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [facesNote, setFacesNote] = useState(false);
+  const shownRejected = useRef(rejected);
   const [merging, setMerging] = useState(false);
   const [mergeErr, setMergeErr] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
@@ -190,6 +193,15 @@ export function Review() {
     return () => window.clearTimeout(mergeTimer.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [typed, rejected]);
+
+  // A reject can renumber the features: the store drops their typed values, so their drafts go too, said once.
+  useEffect(() => {
+    if (shownRejected.current === rejected) return;
+    shownRejected.current = rejected;
+    if (Object.keys(drafts).some((p) => p.startsWith('features['))) setFacesNote(true);
+    setDrafts(dropFeatureDrafts);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rejected]);
 
   // Leaving Review with an edit still waiting: send it now so the typed value is not lost.
   useEffect(() => {
@@ -244,7 +256,13 @@ export function Review() {
   // A merge is waiting (debounce) or in flight: the spec on screen does not hold every typed value yet.
   const updating = merging || typed !== applied.typed || rejected !== applied.rejected;
   const retry = updating && !merging && !!mergeErr;
-  const buildBlocked = building || (updating && !retry);
+  // a draft that is not a valid value is never sent: it is shown at its field and holds Build until fixed
+  const problems: Record<string, string> = Object.fromEntries(Object.entries(drafts).flatMap(([p, raw]) => {
+    const why = raw.trim() === '' ? null : fieldProblem(p, raw);
+    return why ? [[p, why]] : [];
+  }));
+  const invalid = Object.keys(problems).length > 0;
+  const buildBlocked = building || (updating && !retry) || invalid;
 
   const effEnv = (k: 'x' | 'y' | 'z') => typed[`envelope.${k}_mm`] ?? (spec ? spec.envelope[`${k}_mm`] : 0);
   const filledByOf = (f: Face): FilledBy => analysis.filled_by[f] ?? 'observed';
@@ -272,8 +290,9 @@ export function Review() {
   const onFieldChange = (path: string) => (e: ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
     setDrafts((d) => ({ ...d, [path]: raw }));
-    const num = raw.trim() === '' ? NaN : Number(raw);
-    if (Number.isFinite(num)) dispatch({ type: 'TYPE_VALUE', path, value: num });
+    setFacesNote(false);
+    const value = parseMm(raw);
+    if (value !== null && !fieldProblem(path, raw)) dispatch({ type: 'TYPE_VALUE', path, value });
   };
 
   const confirmGroup = (g: LedgerGroup) => {
@@ -282,7 +301,7 @@ export function Review() {
   };
 
   const onBuild = async () => {
-    if (!spec || abstain || building || updating || expired) return;
+    if (!spec || abstain || building || updating || expired || invalid) return;
     setBuilding(true);
     setBuildErr(null);
     setBuildAbstain(null);
@@ -373,10 +392,12 @@ export function Review() {
                         value={displayValue(e.path, e.value)}
                         onChange={onFieldChange(e.path)}
                         placeholder={e.placeholder} inputMode="decimal" aria-label={`${e.label} in millimetres`}
+                        aria-invalid={!!problems[e.path]}
                         style={{ width: 84, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: MONO, fontSize: 28, fontWeight: 500, fontVariantNumeric: 'tabular-nums', padding: 0 }}
                       />
                       <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 300, color: 'var(--muted)' }}>mm</span>
                     </div>
+                    {problems[e.path] && <span role="alert" style={{ fontSize: 12, color: STOP }}>{problems[e.path]}</span>}
                     <button type="button" onClick={() => setOpen((o) => (o === e.key ? null : e.key))} style={{
                       alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6, height: 26, padding: '0 10px 0 8px',
                       borderRadius: 13, border: `1.5px ${b.line} ${b.fg}`, background: b.bg, color: b.fg, font: 'inherit', fontSize: 12, fontWeight: 500, cursor: 'pointer', whiteSpace: 'nowrap',
@@ -416,9 +437,9 @@ export function Review() {
                       </div>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                         {g.fields.map((f) => (
-                          <label key={f.path} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 40, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: `1.5px ${b.line} ${isCheck(g.prov) ? b.fg : 'var(--line)'}`, background: 'var(--inset)' }}>
+                          <label key={f.path} title={problems[f.path]} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 40, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: `1.5px ${b.line} ${problems[f.path] ? STOP : isCheck(g.prov) ? b.fg : 'var(--line)'}`, background: 'var(--inset)' }}>
                             <span style={{ fontFamily: MONO, fontSize: 13, color: 'var(--muted)' }}>{f.label}</span>
-                            <input value={displayValue(f.path, f.value)} onChange={onFieldChange(f.path)} inputMode="decimal" aria-label={f.aria} style={{ width: 40, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: MONO, fontSize: 17, fontWeight: 500, fontVariantNumeric: 'tabular-nums', padding: 0 }} />
+                            <input value={displayValue(f.path, f.value)} onChange={onFieldChange(f.path)} inputMode="decimal" aria-label={f.aria} aria-invalid={!!problems[f.path]} style={{ width: 40, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: MONO, fontSize: 17, fontWeight: 500, fontVariantNumeric: 'tabular-nums', padding: 0 }} />
                           </label>
                         ))}
                         {g.snapped && <span title="Snapped to a standard size" style={{ fontFamily: MONO, fontSize: 11, color: CHK, border: `1px dashed ${CHK}`, borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap' }}>{g.snapLabel}</span>}
@@ -512,6 +533,8 @@ export function Review() {
               </span>
             )}
           </div>
+          {invalid && <div role="alert" style={{ fontSize: 13, color: STOP }}>{Object.values(problems)[0]}: fix the highlighted value to build.</div>}
+          {facesNote && <div role="status" style={{ fontSize: 13, color: 'var(--muted)' }}>The faces changed, so your hole and pocket edits were cleared. Check them again.</div>}
           {mergeErr && <div role="alert" style={{ fontSize: 13, color: STOP }}>{mergeErr}</div>}
           {buildErr && <div role="alert" style={{ fontSize: 13, color: STOP }}>{buildErr}</div>}
           {buildAbstain && (

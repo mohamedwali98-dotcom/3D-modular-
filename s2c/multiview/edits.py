@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import re
 
+from pydantic import ValidationError
+
 from s2c.multiview.spec import FaceBoss, FaceHole, FacePocket, FaceSlot
 
 ENVELOPE = re.compile(r"envelope\.[xyz]_mm")
@@ -24,6 +26,21 @@ def left_out(name: str, feature_exists: bool) -> str:
     what = FIELD_WORDS.get(name, "value")
     why = "that feature has none." if feature_exists else "that feature is no longer on this part."
     return f"{'An' if what[0] in 'aeiou' else 'A'} {what} you typed was left out: {why}"
+
+
+MODELS = {"hole": FaceHole, "slot": FaceSlot, "pocket": FacePocket, "boss": FaceBoss}
+
+
+def out_of_range(feature: dict, name: str, value: float) -> str | None:
+    """The sentence for a typed value this feature cannot hold (0, or past 10 000 mm), or None: the value is left
+    out and said, so one bad number never turns the whole review into an abstain."""
+    try:
+        MODELS[feature["type"]].model_validate({**feature, name: value})
+    except ValidationError:
+        what = FIELD_WORDS.get(name, "value")
+        unit = " mm" if name.endswith("_mm") else ""
+        return f"{'An' if what[0] in 'aeiou' else 'A'} {what} you typed ({value:g}{unit}) was left out: it is out of range."
+    return None
 
 
 class EditError(ValueError):

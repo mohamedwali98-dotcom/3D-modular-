@@ -610,3 +610,18 @@ def test_merge_and_model_records_carry_the_analysis_id(monkeypatch):
     records = [json.loads(line) for line in out.getvalue().strip().splitlines()]
     assert {r["message"]: r.get("job_id") for r in records if r["message"] in ("merging", "building")} == {
         "merging": job["job_id"], "building": job["job_id"]}
+
+
+def test_a_typed_size_out_of_range_is_left_out_and_review_keeps_its_rows():
+    """A 0 (to drop a misread hole) or one zero too many no longer traps Review in an abstain: the value is left
+    out, said, and every other value still builds."""
+    job = analyze()
+    sizes = {"envelope.x_mm": 50, "envelope.y_mm": 30, "envelope.z_mm": 20}
+    before = c.post("/api/merge", json={"request_id": job["job_id"], "user_values": sizes}).json()["spec"]
+    for bad in (0, 20000):
+        r = c.post("/api/merge", json={"request_id": job["job_id"],
+                                        "user_values": {**sizes, "features[0].diameter_mm": bad}})
+        spec = r.json()["spec"]
+        assert r.status_code == 200 and spec, (bad, r.text)
+        assert spec["features"][0]["diameter_mm"] == before["features"][0]["diameter_mm"]
+        assert any("diameter" in w and "out of range" in w for w in spec["warnings"]), spec["warnings"]
