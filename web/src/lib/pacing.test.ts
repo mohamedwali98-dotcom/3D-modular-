@@ -52,3 +52,28 @@ describe('pace', () => {
     expect(at(j, 30).stages[2].state).toBe('running');
   });
 });
+
+describe('pace on a drawing sheet', () => {
+  const crop = (index: number, face: 'front' | 'top' | 'right') => ({
+    index, width: 100, height: 100, face, kind: 'drawing' as const, outline: [[0, 0], [10, 0], [10, 10]] as [number, number][],
+    circles: [], reads: [],
+  });
+  const sheet: Job = {
+    job_id: 's', status: 'done',
+    stages: (['views', 'lines', 'values', 'draw', 'fuse'] as StageKey[]).map((key) => ({
+      key, state: 'done' as StageState, tool: 'x', ai: false, detail: '', started: 1000, ended: 1000,
+    })),
+    images: [crop(0, 'front'), crop(1, 'top'), crop(2, 'right')],
+    coverage: { front: 'observed', top: 'observed', right: 'observed', back: 'empty', left: 'empty', bottom: 'inferred' },
+    result: null, error: null,
+  };
+  it('shows the views it read as observed, though a sheet has no outline stage', () => {
+    const end = pace(sheet, 0, 600_000);
+    expect(end.faces.front).toBe('photo');
+    expect(end.faces.top).toBe('photo');
+    expect(end.trace).toEqual([1, 1, 1]);
+  });
+  it('names a turned view inferred from the others instead of leaving it empty', () => {
+    expect(pace(sheet, 0, 600_000).faces.bottom).toBe('inferred');
+  });
+});

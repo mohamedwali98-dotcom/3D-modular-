@@ -26,7 +26,7 @@ export const FACES: Face[] = ['front', 'top', 'right', 'back', 'left', 'bottom']
 /** The three faces the part is fused from (Spec.views). */
 const FUSED: Face[] = ['front', 'top', 'right'];
 
-export type FaceShow = 'empty' | 'photo' | 'pending' | 'drawing' | 'ai' | 'mirror' | 'assumed';
+export type FaceShow = 'empty' | 'photo' | 'pending' | 'drawing' | 'ai' | 'mirror' | 'assumed' | 'inferred';
 
 export interface PacedStage {
   key: StageKey;
@@ -99,9 +99,10 @@ export function pace(job: Job, startedAt: number, now: number): Playback {
   const isOver = (s?: PacedStage) => !!s && s.state !== 'pending' && s.state !== 'running';
   const label = byKey('label'), outline = byKey('outline'), read = byKey('read'), draw = byKey('draw'), fuse = byKey('fuse');
 
-  // Outline reveal: images traced one after the other inside the outline window.
+  // Outline reveal: images traced one after the other inside the outline window (a sheet's: its views stage).
+  const traced = outline ?? byKey('views');
   const n = job.images.length;
-  const op = outline ? outline.p : 0;
+  const op = traced ? traced.p : 0;
   const trace = job.images.map((_, i) => (n ? cl(op * n - i) : 0));
 
   // Reads locked one after the other, across images in order.
@@ -119,11 +120,12 @@ export function pace(job: Job, startedAt: number, now: number): Playback {
     const img = job.images.findIndex((im) => im.face === f);
     let show: FaceShow = 'empty';
     if (cov === 'observed' || img >= 0) {
-      show = (img >= 0 ? trace[img] >= 1 : isOver(outline)) ? 'photo' : 'empty';
+      show = (img >= 0 ? trace[img] >= 1 : isOver(traced)) ? 'photo' : 'empty';
     } else if (isOver(draw)) {
       if (cov === 'qwen-image' || cov === 'triposr') show = 'ai';
       else if (cov === 'assumed') show = 'assumed';
       else if (cov === 'mirrored') show = fuse && fuse.state !== 'pending' ? 'mirror' : 'empty';
+      else if (cov === 'inferred') show = 'inferred';  // a turned part's view, following from the others
     } else if (draw?.ai && FUSED.includes(f) && isOver(label)) {
       show = draw.state === 'running' ? 'drawing' : 'pending';
     }

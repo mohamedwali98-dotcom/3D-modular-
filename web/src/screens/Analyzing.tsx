@@ -325,6 +325,7 @@ const FS: Record<FaceShow, FaceStyle> = {
   drawing: { bs: 'dashed', bc: 'var(--ai)', bg: 'color-mix(in oklch, var(--ai) 20%, var(--surface))', tc: 'var(--ink)', label: 'Drawing…' },
   ai: { bs: 'dashed', bc: 'var(--ai)', bg: 'color-mix(in oklch, var(--ai) 18%, var(--surface))', tc: 'var(--ai)', label: 'AI-drawn' },
   mirror: { bs: 'dotted', bc: 'var(--muted)', bg: 'var(--surface)', tc: 'var(--muted)', label: 'mirrored' },
+  inferred: { bs: 'dotted', bc: 'var(--muted)', bg: 'var(--surface)', tc: 'var(--muted)', label: 'turned' },
   assumed: { bs: 'dotted', bc: 'var(--check)', bg: 'var(--surface)', tc: 'var(--check)', label: 'assumed' },
 };
 
@@ -441,7 +442,8 @@ export function Analyzing() {
   const label = S('label'), outline = S('outline'), read = S('read'), draw = S('draw'), fuse = S('fuse');
   const spin = Math.round((t * 420) % 360);
   const images = job?.images ?? [];
-  const n = Math.max(images.length, items.length);
+  // one sheet is one drawing, however many views it was cut into
+  const n = state.mode === 'sheet' ? items.length : Math.max(images.length, items.length);
 
   // Header copy from what the user actually sent.
   const kinds = new Set(images.map((im, i) => im.kind ?? (items[i]?.kind !== 'auto' ? items[i]?.kind : null)));
