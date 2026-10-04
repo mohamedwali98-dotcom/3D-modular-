@@ -192,10 +192,13 @@ class Studio:
         self.pipe, self.store, self.root = pipe, store or SessionStore(), Path(root)
 
     # ---- capture -----------------------------------------------------------------------------------------
-    def add_images(self, sid: str, paths, face: str = "auto") -> None:
+    def add_images(self, sid: str, paths, face: str = "auto", use_reader: bool | None = None) -> None:
         """An image whose face is "auto" and that is a drawing sheet becomes one item per view (drawing-sheet spec
-        3.6); any other image is one item."""
+        3.6); any other image is one item. `use_reader` is the Qwen-VL switch as it is now: a sheet is read once, at
+        its drop, so it must not wait for Analyze to learn the switch is off."""
         session = self.store.get(sid)
+        if use_reader is not None:
+            session.ai = session.ai.model_copy(update={"use_reader": use_reader})
         face = face if face in FACE_CHOICES else "auto"
         for p in paths or []:
             views = None
@@ -304,11 +307,11 @@ class Studio:
             session.items.append(Item(uuid.uuid4().hex[:8], str(EXAMPLES / entry["file"]), entry["file"],
                                       entry["face"], entry["kind"]))
 
-    def load_sheet_example(self, sid: str) -> None:
+    def load_sheet_example(self, sid: str, use_reader: bool | None = None) -> None:
         """A first-angle sheet drawn by our own code from a known part; its README gives the sizes to type."""
         session = self.store.get(sid)
         session.items, session.sheets = [], {}
-        self.add_images(sid, [SHEET_EXAMPLE])
+        self.add_images(sid, [SHEET_EXAMPLE], use_reader=use_reader)
 
     def coverage_html(self, sid: str) -> str:
         items = self.store.get(sid).items
@@ -356,12 +359,21 @@ class Studio:
         session.observed, session.edits, session.rejected, session.part = observed, {}, (), None
         return self._review(session, pipe.fuse(observed, geometry=session.geometry))
 
-    def redraw(self, sid: str) -> Review:
+    def redraw(self, sid: str, ai: AiSettings | None = None) -> Review:
+        """New drawings of the AI faces with the switches as they are now (`ai`): a helper switched off since Analyze
+        is never called again, and a seed typed since is the one used."""
         session = self.store.get(sid)
         if session.observed is None:
             return Review(False, "capture", card("Nothing to redraw", "Analyze your images first.", "check"))
-        seed = random.randint(0, 2**31 - 1) if session.ai.randomize_seed else session.ai.seed + session.ai.attempts
-        session.ai = session.ai.model_copy(update={"seed": seed})
+        ai = ai or session.ai
+        if not (ai.use_qwen_image or ai.use_triposr):
+            return Review(False, "review", card("Nothing to redraw with", "Turn on Qwen-Image or TripoSR to redraw "
+                                                "the AI faces.", "check"), seed=ai.seed)
+        if ai.randomize_seed:
+            seed = random.randint(0, 2**31 - 1)
+        else:  # the next seeds, or the one the user typed since
+            seed = ai.seed + ai.attempts if ai.seed == session.ai.seed else ai.seed
+        session.ai = ai.model_copy(update={"seed": seed % 2**31})
         return self._review(session, self._fuse(session))
 
     def suggested_sizes(self, sid: str) -> dict[str, str]:

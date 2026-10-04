@@ -17,7 +17,7 @@ from s2c.multiview.settings import (
     MeshSettings,
     PrintSettings,
 )
-from s2c.studio.handlers import AXES, AXIS_LABEL, FACE_CHOICES, KIND_CHOICES, REFERENCES, Studio
+from s2c.studio.handlers import AXES, AXIS_LABEL, FACE_CHOICES, KIND_CHOICES, REFERENCES, Review, Studio
 from s2c.studio.status import header_html, provider_status
 from s2c.studio.theme import CSS, THEME, card
 
@@ -203,16 +203,16 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
             return GeometrySettings(snap=v[0], clearance=v[1], finish=v[2], finish_mm=float(v[3]),
                                     finish_edges=v[4])
 
-        def on_upload(paths, s, n):
-            studio.add_images(s, paths)
+        def on_upload(paths, s, n, use_reader_now):
+            studio.add_images(s, paths, use_reader=use_reader_now)
             return None, n + 1, studio.coverage_html(s), studio.sheet_html(s)
 
         def on_example(s, n):
             studio.load_examples(s)
             return n + 1, studio.coverage_html(s), studio.sheet_html(s)
 
-        def on_sheet_example(s, n):
-            studio.load_sheet_example(s)
+        def on_sheet_example(s, n, use_reader_now):
+            studio.load_sheet_example(s, use_reader=use_reader_now)
             return n + 1, studio.coverage_html(s), studio.sheet_html(s)
 
         def on_projection(p, s, n):
@@ -231,8 +231,14 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
                 return [gr.update(), r.message_html, *[gr.update()] * len(review_outputs)]
             return [gr.Walkthrough(selected=1), "", *show_review(r)]
 
-        def on_redraw(s):
-            return show_review(studio.redraw(s))
+        def on_redraw(s, *v):  # the AI switches as they are now, not as they were at Analyze
+            try:
+                r = studio.redraw(s, ai_settings(*v))
+            except ValueError as e:
+                r = Review(False, "review", card("Check the AI settings", str(e), "stop"))
+            if not r.ok and r.stage == "review" and not r.sizes:  # a card only: the review on screen stays
+                return [r.message_html, *[gr.update()] * (len(review_outputs) - 1)]
+            return show_review(r)
 
         def on_suggest(s, *boxes):  # fills only the empty boxes; Build records them as the user's own values
             hints = studio.suggested_sizes(s)
@@ -278,15 +284,15 @@ def build_app(pipe: MvPipeline | None = None, studio: Studio | None = None) -> g
 
         ai_inputs = [use_reader, use_qwen, use_rescue, use_triposr, use_solaria, seed, randomize, attempts]
         geometry_inputs = [snap, clearance, finish, finish_mm, finish_edges]
-        drop.upload(on_upload, [drop, sid, version], [drop, version, coverage, sheet_card])
+        drop.upload(on_upload, [drop, sid, version, use_reader], [drop, version, coverage, sheet_card])
         example.click(on_example, [sid, version], [version, coverage, sheet_card])
-        sheet_example.click(on_sheet_example, [sid, version], [version, coverage, sheet_card])
+        sheet_example.click(on_sheet_example, [sid, version, use_reader], [version, coverage, sheet_card])
         projection.input(on_projection, [projection, sid, version], [version, coverage, sheet_card])
         app.load(studio.coverage_html, [sid], [coverage])
         analyzing = analyze.click(on_analyze, [sid, reference, *ai_inputs], [walk, capture_msg, *review_outputs],
                                   concurrency_id="models", concurrency_limit=2)
         cancel.click(None, None, None, cancels=[analyzing])
-        redraw.click(on_redraw, [sid], review_outputs, concurrency_id="models", concurrency_limit=2)
+        redraw.click(on_redraw, [sid, *ai_inputs], review_outputs, concurrency_id="models", concurrency_limit=2)
         suggest.click(on_suggest, [sid, *sizes.values()], list(sizes.values()))
         # The viewer is filled in a .then() after the step switch: a Model3D that gets its first file while its
         # step is still hidden never mounts its canvas (Gradio 6.28).

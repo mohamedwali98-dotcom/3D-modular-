@@ -447,3 +447,34 @@ def test_a_build_failure_that_is_not_the_finish_is_not_blamed_on_it(studio, tmp_
     assert model.ok is False and "does not fit" not in model.message_html
     assert "outside the part" in model.message_html
     assert studio.store.get(sid).part is None and model.open_step is None
+
+
+def test_redraw_follows_the_switches_as_they_are_now(tmp_path, monkeypatch):
+    """Qwen-Image switched off after Analyze sends nothing more to it; a seed typed since is the one used."""
+    monkeypatch.setattr("s2c.multiview.slice.find_slicer", lambda: None)
+    gen = fake_gen(np.zeros((300, 300, 3), np.uint8))
+    studio = Studio(MvPipeline(image_gen=gen), root=tmp_path / "files")
+    sid = with_images(studio, tmp_path, faces=(("front", 600, 400),))
+    review = studio.analyze(sid, "none", AiSettings(use_qwen_image=True, seed=10, attempts=1))
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    calls = len(gen.calls)
+    off = studio.redraw(sid, AiSettings(use_qwen_image=False, use_triposr=False, seed=10, attempts=1))
+    assert len(gen.calls) == calls and not off.ok and "Qwen-Image" in off.message_html
+    studio.redraw(sid, AiSettings(use_qwen_image=True, seed=500, attempts=1))
+    assert {c[2] for c in gen.calls[calls:]} == {500}
+
+
+def test_a_dropped_sheet_is_read_with_the_reader_switch_as_it_is(tmp_path, monkeypatch):
+    seen = []
+
+    def record(image, projection, reader=None, service=None, keep_unnamed=False):
+        seen.append([r.name for r in service.readers] if service else [])
+
+    monkeypatch.setattr(handlers, "read_drawing", record)
+    studio = Studio(MvPipeline(batch_reader=lambda crops: [("1", 0.9)] * len(crops),
+                               reader=lambda crop: ("1", 0.99)), root=tmp_path / "files")
+    sid = studio.store.new()
+    path = tmp_path / "sheet.png"
+    path.write_bytes(sketch(600, 400))
+    studio.add_images(sid, [str(path)], use_reader=False)
+    assert seen and "qwen" not in seen[0]
