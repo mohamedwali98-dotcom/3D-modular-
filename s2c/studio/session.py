@@ -48,6 +48,7 @@ class Session:
     row_paths: list[str] = field(default_factory=list)
     shown: dict[str, float | None] = field(default_factory=dict)
     part: Part | None = None
+    part_geometry: GeometrySettings | None = None  # the settings `part` was built with (a failed finish keeps it)
     exported: ExportResult | None = None
     projection: str = "auto"
     sheets: dict[str, tuple] = field(default_factory=dict)  # sheet id -> (image path, Sheet, Naming)

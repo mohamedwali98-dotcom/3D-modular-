@@ -1,6 +1,8 @@
+import json
 import os
 import re
 import time
+import zipfile
 from pathlib import Path
 
 import gradio as gr
@@ -572,3 +574,16 @@ def test_an_export_never_queues_the_other_users_builds(studio):
     """A G-code or Blender export can take a minute: it runs in its own queue, not the builds' one."""
     app = build_app(studio=studio)
     assert app_event(app, "on_export").concurrency_id != app_event(app, "on_build").concurrency_id
+
+
+def test_the_manifest_records_the_geometry_the_part_was_built_with(studio, tmp_path, monkeypatch):
+    """A fillet that fails keeps the good part on screen; its zip must not claim the fillet."""
+    fail_big_fillets(monkeypatch)
+    sid = with_images(studio, tmp_path)
+    review = studio.analyze(sid, "none", AiSettings())
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    studio.rebuild_geometry(sid, GeometrySettings(finish="fillet", finish_mm=6.0))
+    exported = studio.export(sid, ExportSettings(formats=["stl"]), MeshSettings(), PrintSettings())
+    with zipfile.ZipFile(exported.zip_path) as z:
+        manifest = json.loads(z.read("manifest.json"))
+    assert manifest["settings"]["geometry"]["finish"] == "none"

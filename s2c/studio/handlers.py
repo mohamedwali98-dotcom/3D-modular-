@@ -538,7 +538,7 @@ class Studio:
                 return self._finish_failure_model(session)
             session.part = None
             return Model(False, _abstain_card(part))
-        session.part, session.exported = part, None
+        session.part, session.exported, session.part_geometry = part, None, session.geometry
         return self._built_model(part, session)
 
     def _built_model(self, part, session) -> Model:
@@ -576,7 +576,7 @@ class Studio:
         res = export_part(session.part, export.formats, mesh, printing, self.pipe.slicer, self.pipe.profile)
         session.exported = res
         settings = {"mesh": mesh.model_dump(), "printing": printing.model_dump(), "ai": session.ai.model_dump(),
-                    "geometry": session.geometry.model_dump(), "formats": export.formats}
+                    "geometry": (session.part_geometry or session.geometry).model_dump(), "formats": export.formats}
         zip_path = bundle(session.part, res, settings)
         x, y, z = session.part.bbox_mm
         items = [("Size", f"{x:.1f} × {y:.1f} × {z:.1f} mm"), ("Files", str(len(res.files))),
