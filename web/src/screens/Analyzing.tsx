@@ -426,7 +426,7 @@ export function Analyzing() {
     // the job may still be running on the server: keep waiting for it, or give it up (which frees its slot)
     return wrap(<>
       <StopCard title="Lost the connection" remedy={`${fatal} Your analysis may still be running.`} actionLabel="Keep waiting"
-        onAction={() => { setFatal(null); setOffline(false); setNetErr(null); setPollRun((n) => n + 1); }} />
+        onAction={() => { setFatal(null); setOffline(false); setNetErr(null); dispatch({ type: 'JOB_RESUMED' }); setPollRun((n) => n + 1); }} />
       <button type="button" onClick={onCancel} style={{ justifySelf: 'start', marginTop: 12, border: 'none', background: 'none', padding: 0, color: 'var(--muted)', font: 'inherit', fontSize: 14, cursor: 'pointer', textDecoration: 'underline' }}>Give it up and go back to capture</button>
     </>);
   }

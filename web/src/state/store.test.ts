@@ -55,6 +55,12 @@ describe('store', () => {
     expect(s.applied.typed).toBe(s.typed);
   });
 
+  it('clears a lost job when the user keeps waiting for it', () => {
+    let s = reducer({ ...initialState, items: [item('a')] }, { type: 'START_JOB', jobId: 'j1' });
+    s = reducer(s, { type: 'JOB_LOST', error: 'Could not reach the server.' });
+    expect(reducer(s, { type: 'JOB_RESUMED' }).jobError).toBeNull();
+  });
+
   it('remembers the spec a model was built from', () => {
     const spec = { version: 'mv1' } as Spec;
     const model = { key: 'k' } as ModelResult;

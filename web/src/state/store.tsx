@@ -49,6 +49,7 @@ export type Action =
   | { type: 'START_JOB'; jobId: string }
   | { type: 'JOB_UPDATE'; job: Job }
   | { type: 'JOB_LOST'; error: string }
+  | { type: 'JOB_RESUMED' }
   | { type: 'ANALYSIS'; analysis: Analysis; applied?: { typed: Record<string, number>; rejected: Face[] } }
   | { type: 'TYPE_VALUE'; path: string; value: number }
   | { type: 'TOGGLE_REJECT'; face: Face }
@@ -115,6 +116,8 @@ export function reducer(state: State, action: Action): State {
       return action.job.job_id === state.jobId ? { ...state, job: action.job } : state;
     case 'JOB_LOST':
       return { ...state, jobError: action.error };
+    case 'JOB_RESUMED':  // Keep waiting: the job may still finish
+      return { ...state, jobError: null };
     case 'ANALYSIS':
       // A part described in the chat has no job: it replaces whatever the photos produced.
       if (action.analysis.request_id === '') {
