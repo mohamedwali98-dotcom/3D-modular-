@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 from s2c import obs
 
-LOCAL = frozenset({"127.0.0.1", "::1", "localhost"})
+LOCAL = frozenset({"127.0.0.1", "::1", "::ffff:127.0.0.1", "localhost"})  # the last: a dual-stack proxy
 OPEN_PATHS = frozenset({"/api/status", "/api/examples"})  # GET (and HEAD) these exact paths...
 OPEN_PREFIXES = ("/api/examples/", "/api/artifacts/")      # ...and anything under these
 WINDOW_S = 60.0

@@ -138,3 +138,9 @@ def test_a_refusal_says_whether_a_token_would_help(monkeypatch):
     assert client(REMOTE).post("/api/merge", json=UNKNOWN_JOB).json()["reason"] == "no_token"
     monkeypatch.setenv("S2C_ACCESS_TOKEN", "s3cret-token")
     assert client(REMOTE, "wrong").post("/api/merge", json=UNKNOWN_JOB).json()["reason"] == "bad_token"
+
+
+def test_this_computer_written_as_ipv4_mapped_ipv6_is_this_computer():
+    """Node listening dual-stack (npm run dev -- --host) forwards a local browser as ::ffff:127.0.0.1."""
+    own = client(LOCAL).post("/api/merge", json=UNKNOWN_JOB, headers={"X-Forwarded-For": "::ffff:127.0.0.1"})
+    assert own.status_code == 404

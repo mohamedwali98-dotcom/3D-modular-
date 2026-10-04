@@ -644,3 +644,11 @@ def test_a_typed_envelope_out_of_range_asks_for_it_again_instead_of_failing():
         abstain = r.json()["abstain"]
         assert abstain["reason"] == "invalid_value" and "envelope.x_mm" in abstain["missing"], abstain
         assert "width" in abstain["remedy"].lower() or "10 000" in abstain["remedy"]
+
+
+def test_a_malformed_spec_is_refused_without_its_internals():
+    """Only a setting's own sentence is shown; a spec's validation details stay in the log."""
+    spec = json.loads((Path(__file__).parents[1] / "examples" / "mv" / "l_bracket.json").read_text())
+    spec["provenance"] = {}
+    r = c.post("/api/model", json={"spec": spec})
+    assert r.status_code == 422 and r.json()["error"] == "The request is not valid. Check the values and try again."

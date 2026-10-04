@@ -434,7 +434,8 @@ def install_error_handlers(app: FastAPI) -> None:
     async def invalid(request: Request, exc: RequestValidationError) -> JSONResponse:
         if not api(request):
             return JSONResponse({"detail": jsonable_encoder(exc.errors())}, status_code=422)
-        own = next((e["msg"].removeprefix("Value error, ") for e in exc.errors() if e.get("type") == "value_error"), None)
+        own = next((e["msg"].removeprefix("Value error, ") for e in exc.errors()  # only a setting's own sentence:
+                    if e.get("type") == "value_error" and "settings" in e.get("loc", ())), None)  # never spec internals
         sentence = f"{own[0].upper()}{own[1:]}." if own else "The request is not valid. Check the values and try again."
         return JSONResponse({"error": sentence}, status_code=422)  # a setting's own check names itself
 
