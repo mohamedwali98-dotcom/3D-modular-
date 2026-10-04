@@ -443,7 +443,7 @@ export function Analyzing() {
   const spin = Math.round((t * 420) % 360);
   const images = job?.images ?? [];
   // one sheet is one drawing, however many views it was cut into
-  const n = state.mode === 'sheet' ? items.length : Math.max(images.length, items.length);
+  const n = (job?.mode ?? state.mode) === 'sheet' ? items.length : Math.max(images.length, items.length);
 
   // Header copy from what the user actually sent.
   const kinds = new Set(images.map((im, i) => im.kind ?? (items[i]?.kind !== 'auto' ? items[i]?.kind : null)));

@@ -1,5 +1,7 @@
 """A drawing sheet read end to end: views named (projection chosen by the drawing), dimensions read, part built
 with no typed size (sheet-reading spec 2026-10-01)."""
+from pathlib import Path
+
 import cv2
 import numpy as np
 import pytest
@@ -122,3 +124,12 @@ def test_a_written_diameter_far_from_the_drawn_hole_is_flagged():
     spec, k = _front_hole("D20")
     assert spec.provenance[f"features[{k}].diameter_mm"] != "user_written"
     assert any("D20" in w for w in spec.warnings)
+
+
+def test_has_views_finds_a_sheet_and_refuses_a_single_outline():
+    from s2c.multiview.sheet_read import has_views
+    sheet = cv2.imread(str(Path(__file__).resolve().parents[1] / "examples" / "mv" / "sheet" / "sheet.png"))
+    assert has_views(sheet)
+    one = np.full((400, 400, 3), 255, np.uint8)
+    cv2.rectangle(one, (100, 120), (300, 280), (0, 0, 0), 3)
+    assert not has_views(one)

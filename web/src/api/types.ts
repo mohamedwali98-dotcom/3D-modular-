@@ -21,7 +21,7 @@ export interface Stage { key: StageKey; state: StageState; tool: string; ai: boo
 export interface ReadValue { text: string; value_mm: number; kind: 'linear' | 'diameter' | 'radius'; bbox: [number, number, number, number]; confidence: number }
 export interface JobImage { index: number; width: number; height: number; face: Face | 'unknown' | null; kind: 'sketch' | 'photo' | 'drawing' | null;
   outline: [number, number][] | null; circles: { cx: number; cy: number; d: number }[]; reads: ReadValue[] }
-export interface Job { job_id: string; status: 'running' | 'done' | 'failed' | 'cancelled'; stages: Stage[]; images: JobImage[];
+export interface Job { job_id: string; /** "sheet" also when one untagged photo turned out to hold every view. */ mode?: 'photos' | 'sheet'; status: 'running' | 'done' | 'failed' | 'cancelled'; stages: Stage[]; images: JobImage[];
   coverage: Record<Face, FilledBy | 'empty'>; result: Analysis | null; error: string | null }
 
 export interface Abstain { stage: string; reason: string; remedy: string; partial: Record<string, number> | null;

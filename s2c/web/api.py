@@ -210,17 +210,19 @@ def analyze(pipe: Pipe, files: Annotated[list[UploadFile] | None, File()] = None
     if settings.randomize_seed:
         settings = settings.model_copy(update={"seed": secrets.randbelow(2**31)})
     pipe = pipe.configured(settings)
+    face_tags, kind_tags = _json_list(faces, "faces"), _json_list(kinds, "kinds")
+    if mode == "photos" and len(datas) == 1 and _tag(face_tags, 0) is None and jobs.is_sheet_image(datas[0]):
+        mode = "sheet"  # one untagged image holding several views: its faces are found and named, never asked for
     if mode == "sheet":
         job = jobs.new_sheet_job(pipe, register=False)
         if not jobs.start_sheet(job, pipe, ImageInput(datas[0]), projection):
             raise HTTPException(429, BUSY)
-        return {"job_id": job.job_id}
-    face_tags, kind_tags = _json_list(faces, "faces"), _json_list(kinds, "kinds")
+        return {"job_id": job.job_id, "mode": "sheet"}
     images = [ImageInput(d, _tag(face_tags, i), _tag(kind_tags, i)) for i, d in enumerate(datas)]
     job = jobs.new_job(len(images), pipe, register=False)
     if not jobs.start(job, pipe, images, reference or None):
         raise HTTPException(429, BUSY)
-    return {"job_id": job.job_id}
+    return {"job_id": job.job_id, "mode": "photos"}
 
 
 def _job(job_id: str) -> jobs.Job:

@@ -652,3 +652,29 @@ def test_a_malformed_spec_is_refused_without_its_internals():
     spec["provenance"] = {}
     r = c.post("/api/model", json={"spec": spec})
     assert r.status_code == 422 and r.json()["error"] == "The request is not valid. Check the values and try again."
+
+
+def test_an_untagged_sheet_sent_as_a_photo_is_split_and_labelled_with_no_face_tag(monkeypatch):
+    """One image with several views, sent in Photos mode with no face tag: the faces are found and named by the
+    sheet reader instead of the analysis stopping at "Tell us which face this photo shows"."""
+    monkeypatch.setattr("s2c.sketch.read_sketch", lambda b: (_ for _ in ()).throw(AssertionError("no")),
+                        raising=False)
+    sheet = Path(__file__).resolve().parents[1] / "examples" / "mv" / "sheet" / "sheet.png"
+    r = c.post("/api/analyze", files=[("files", ("sheet.png", sheet.read_bytes(), "image/png"))],
+               data={"faces": json.dumps(["auto"])})
+    assert r.status_code == 202, r.text
+    assert r.json()["mode"] == "sheet"
+    job = _wait(r.json()["job_id"])
+    assert job["mode"] == "sheet"
+    assert job["status"] == "done", job
+    assert {i["face"] for i in job["images"]} >= {"front", "top"}
+
+
+def test_a_tagged_photo_stays_a_photo_even_when_it_looks_like_a_sheet():
+    """The user's own face tag wins: the image is analysed as that one face."""
+    sheet = Path(__file__).resolve().parents[1] / "examples" / "mv" / "sheet" / "sheet.png"
+    r = c.post("/api/analyze", files=[("files", ("sheet.png", sheet.read_bytes(), "image/png"))],
+               data={"faces": json.dumps(["front"])})
+    assert r.status_code == 202, r.text
+    assert r.json()["mode"] == "photos"
+    assert _wait(r.json()["job_id"])["mode"] == "photos"

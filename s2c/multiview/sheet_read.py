@@ -382,6 +382,20 @@ def read_sheet(image_bgr: np.ndarray, projection: str = "auto", reader=None, ser
     return _read(sheet, image, projection, reader, service, keep_unnamed, SCALE)
 
 
+def has_views(image_bgr: np.ndarray) -> bool:
+    """Whether one image holds a sheet of several views, found as `read_drawing` finds them but with no naming
+    and no reading: cheap enough to decide, before an analysis starts, that an untagged photo is a whole sheet."""
+    page = page_of(image_bgr)
+    if isinstance(page, S.MvAbstain):
+        return False
+    if page.kind == "drawing" and is_sheet(split_sheet(page.image)):
+        return True
+    sheet = split_by_outlines(page.image, page.stroke_px)
+    if sum(len(d.views) for d in sheet.drawings) < 2:
+        sheet = split_sheet(page.image)
+    return is_sheet(sheet, SKETCH_ALIGN, SKETCH_EXTENT)
+
+
 def read_drawing(image_bgr: np.ndarray, projection: str = "auto", reader=None, service=None,
                  keep_unnamed: bool = False) -> SheetRead | S.MvAbstain | None:
     """One image to named views and their numbers (sketch-to-model spec 3): a clean drawing is read exactly as

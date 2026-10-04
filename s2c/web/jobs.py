@@ -86,7 +86,7 @@ class Job:
 
     def to_json(self) -> dict:
         with self.lock:
-            return {"job_id": self.job_id, "status": self.status,
+            return {"job_id": self.job_id, "status": self.status, "mode": self.mode,
                     "stages": [dict(s) for s in self.stages],
                     "images": [{**i, "circles": list(i["circles"]), "reads": list(i["reads"])} for i in self.images],
                     "coverage": dict(self.coverage), "result": self.result, "error": self.error}
@@ -370,6 +370,18 @@ def _sheet_reading(image_bytes: bytes):
     except ImportError as e:
         raise UserFacing(SHEET_UNAVAILABLE) from e
     return read_sketch(image_bytes)
+
+
+def is_sheet_image(image_bytes: bytes) -> bool:
+    """Whether one uploaded image is a whole sheet of views (sheet_read.has_views): sent untagged in Photos mode,
+    it is read as a sheet. Never raises: an image it cannot judge stays a photo."""
+    from s2c.multiview.sheet_read import has_views
+    try:
+        image = cv2.imdecode(np.frombuffer(image_bytes, np.uint8), cv2.IMREAD_COLOR)
+        return image is not None and has_views(image)
+    except Exception as e:  # noqa: BLE001 - the check only routes; the photo path still reports any real problem
+        obs.fallback("sheet_check", e)
+        return False
 
 
 def _drawn_sheet(image_bytes: bytes, pipe: MvPipeline, projection: str = "auto"):
