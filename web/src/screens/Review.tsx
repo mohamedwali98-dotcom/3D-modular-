@@ -7,6 +7,7 @@ import { EXPIRED, isDimensionAbstain } from '../lib/abstain';
 import { snappedLabel } from '../lib/snap';
 import { listPhrase } from '../lib/words';
 import { dropFeatureDrafts, fieldProblem, parseMm } from '../lib/number';
+import { reviewGate } from '../lib/gate';
 import { BADGE, countChecks, featureRows, isCheck, provOf, type BadgeKey } from '../lib/provenance';
 import { useStore } from '../state/store';
 
@@ -253,16 +254,18 @@ export function Review() {
   const touched = spec ? featureRows(spec, typed).some((r) => r.path in typed && isCheck(r.prov)) : false;
   const buildLabel = nCheck > 0 && !touched ? `Build anyway (${nCheck} unchecked) →` : 'Build part →';
   const canBuild = !abstain && !!spec && !expired;
-  // A merge is waiting (debounce) or in flight: the spec on screen does not hold every typed value yet.
-  const updating = merging || typed !== applied.typed || rejected !== applied.rejected;
-  const retry = updating && !merging && !!mergeErr;
+  // A part described in the chat has no analysis to merge with: its sizes are changed in the chat, not here.
+  const described = !requestId;
   // a draft that is not a valid value is never sent: it is shown at its field and holds Build until fixed
   const problems: Record<string, string> = Object.fromEntries(Object.entries(drafts).flatMap(([p, raw]) => {
     const why = raw.trim() === '' ? null : fieldProblem(p, raw);
     return why ? [[p, why]] : [];
   }));
   const invalid = Object.keys(problems).length > 0;
-  const buildBlocked = building || (updating && !retry) || invalid;
+  // A merge is waiting (debounce) or in flight: the spec on screen does not hold every typed value yet.
+  const { updating, retry, blocked: buildBlocked } = reviewGate({
+    requestId, pending: typed !== applied.typed || rejected !== applied.rejected, merging, mergeErr, building, invalid,
+  });
 
   const effEnv = (k: 'x' | 'y' | 'z') => typed[`envelope.${k}_mm`] ?? (spec ? spec.envelope[`${k}_mm`] : 0);
   const filledByOf = (f: Face): FilledBy => analysis.filled_by[f] ?? 'observed';
@@ -392,7 +395,7 @@ export function Review() {
                         value={displayValue(e.path, e.value)}
                         onChange={onFieldChange(e.path)}
                         placeholder={e.placeholder} inputMode="decimal" aria-label={`${e.label} in millimetres`}
-                        aria-invalid={!!problems[e.path]}
+                        aria-invalid={!!problems[e.path]} readOnly={described}
                         style={{ width: 84, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: MONO, fontSize: 28, fontWeight: 500, fontVariantNumeric: 'tabular-nums', padding: 0 }}
                       />
                       <span style={{ fontFamily: MONO, fontSize: 15, fontWeight: 300, color: 'var(--muted)' }}>mm</span>
@@ -439,7 +442,7 @@ export function Review() {
                         {g.fields.map((f) => (
                           <label key={f.path} title={problems[f.path]} style={{ display: 'flex', alignItems: 'center', gap: 5, height: 40, boxSizing: 'border-box', padding: '0 10px', borderRadius: 9, border: `1.5px ${b.line} ${problems[f.path] ? STOP : isCheck(g.prov) ? b.fg : 'var(--line)'}`, background: 'var(--inset)' }}>
                             <span style={{ fontFamily: MONO, fontSize: 13, color: 'var(--muted)' }}>{f.label}</span>
-                            <input value={displayValue(f.path, f.value)} onChange={onFieldChange(f.path)} inputMode="decimal" aria-label={f.aria} aria-invalid={!!problems[f.path]} style={{ width: 40, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: MONO, fontSize: 17, fontWeight: 500, fontVariantNumeric: 'tabular-nums', padding: 0 }} />
+                            <input value={displayValue(f.path, f.value)} onChange={onFieldChange(f.path)} inputMode="decimal" aria-label={f.aria} aria-invalid={!!problems[f.path]} readOnly={described} style={{ width: 40, border: 'none', outline: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: MONO, fontSize: 17, fontWeight: 500, fontVariantNumeric: 'tabular-nums', padding: 0 }} />
                           </label>
                         ))}
                         {g.snapped && <span title="Snapped to a standard size" style={{ fontFamily: MONO, fontSize: 11, color: CHK, border: `1px dashed ${CHK}`, borderRadius: 4, padding: '2px 5px', whiteSpace: 'nowrap' }}>{g.snapLabel}</span>}
@@ -533,6 +536,7 @@ export function Review() {
               </span>
             )}
           </div>
+          {described && <div role="status" style={{ fontSize: 13, color: 'var(--muted)' }}>This part came from the chat: change its sizes there. <button type="button" onClick={() => dispatch({ type: 'GOTO', screen: 'describe' })} style={{ border: 'none', background: 'none', padding: 0, color: 'var(--accent)', font: 'inherit', cursor: 'pointer', textDecoration: 'underline' }}>Back to the chat</button></div>}
           {invalid && <div role="alert" style={{ fontSize: 13, color: STOP }}>{Object.values(problems)[0]}: fix the highlighted value to build.</div>}
           {facesNote && <div role="status" style={{ fontSize: 13, color: 'var(--muted)' }}>The faces changed, so your hole and pocket edits were cleared. Check them again.</div>}
           {mergeErr && <div role="alert" style={{ fontSize: 13, color: STOP }}>{mergeErr}</div>}

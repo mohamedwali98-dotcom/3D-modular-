@@ -136,7 +136,8 @@ export function Model() {
     window.clearTimeout(rbTimer.current);
   }, []);
 
-  const goReview = () => dispatch({ type: 'GOTO', screen: 'review' });
+  // a part described in the chat is changed in the chat: it has no analysis for Review to merge with
+  const goReview = () => dispatch({ type: 'GOTO', screen: state.analysis?.request_id ? 'review' : 'describe' });
   const goCapture = () => dispatch({ type: 'GOTO', screen: 'capture' });
 
   if (!spec) {
