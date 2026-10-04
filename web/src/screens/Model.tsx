@@ -70,7 +70,8 @@ export function Model() {
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
-  const model = viewerModel(state.model, state.modelSpec, spec, building);
+  const [builtGeometry, setBuiltGeometry] = useState<GeometrySettings | undefined>(undefined);
+  const model = viewerModel(state.model, state.modelSpec, spec, building, builtGeometry, g);
 
   const [sel, setSel] = useState<Record<string, boolean>>({ stl: true, step: true, '3mf': true, pdf: true, gcode: true });
   const [status, setStatus] = useState<Status | null>(null);
@@ -102,6 +103,7 @@ export function Model() {
       const m = await buildModel({ request_id: live.current.requestId, spec: s, geometry });
       if (my !== seq.current) return;
       dispatch({ type: 'MODEL', model: m, spec: s, requestId: live.current.requestId ?? '' });
+      setBuiltGeometry(geometry);
       if (flash) {
         setRebuilt(true);
         window.clearTimeout(rbTimer.current);

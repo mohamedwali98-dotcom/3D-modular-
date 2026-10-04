@@ -13,3 +13,13 @@ describe('viewerModel', () => {
     expect(viewerModel(model, spec, edited, false)).toBeNull();
   });
 });
+
+describe('viewerModel and the shape settings', () => {
+  const model = { key: 'k' }, spec = { v: 1 };
+  it('drops a part built with other shape settings once their rebuild stopped', () => {
+    const built = { finish: 'none', finish_mm: 1 }, now = { finish: 'fillet', finish_mm: 6 };
+    expect(viewerModel(model, spec, spec, false, built, now)).toBeNull();
+    expect(viewerModel(model, spec, spec, true, built, now)).toBe(model);
+    expect(viewerModel(model, spec, spec, false, built, { ...built })).toBe(model);
+  });
+});
