@@ -13,6 +13,31 @@ import { useStore } from '../state/store';
 
 const SACC = 'oklch(0.74 0.10 52)', STRU = 'oklch(0.78 0.14 155)', SAI = 'oklch(0.70 0.07 195)';
 const MONO = "'Geist Mono', monospace";
+
+const CSS = `
+@media (max-width:1023px){
+  .s2c-analyzing-grid,.s2c-analyzing-row{grid-template-columns:minmax(0,1fr)!important;height:auto!important}
+  .s2c-analyzing-header{height:auto!important;flex-wrap:wrap}
+}`;
+
+/** A fixed-size pane drawn at its own pixel size and scaled down to fit a narrower column (a phone), chips and
+ * traces included, so nothing it positions in pixels moves. */
+function Fit({ W, H, children }: { W: number; H: number; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(([entry]) => setScale(Math.min(1, entry.contentRect.width / W)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [W]);
+  return (
+    <div ref={ref} style={{ width: '100%', maxWidth: W, height: H * scale }}>
+      <div style={{ width: W, height: H, transform: `scale(${scale})`, transformOrigin: '0 0' }}>{children}</div>
+    </div>
+  );
+}
 const cl = (x: number) => Math.max(0, Math.min(1, x));
 const ez = (x: number) => 1 - Math.pow(1 - cl(x), 3);
 const back = (x: number) => { x = cl(x); const s = 1.6; return 1 + (s + 1) * Math.pow(x - 1, 3) + s * Math.pow(x - 1, 2); };
@@ -438,10 +463,10 @@ export function Analyzing() {
     return { faceTxt: face ? face.toUpperCase() : '?', tagTxt: ai ? 'labelled by AI' : 'tagged by you', tagAi: ai, tagO: ez((lp - start) / 0.5) };
   };
   const pane = (i: number, W: number, H: number, big: boolean, extra?: Partial<PaneProps>) => (
-    <SketchPane key={i} W={W} H={H} big={big} url={items[i]?.url} image={images[i]} natural={natural[i]}
+    <Fit key={i} W={W} H={H}><SketchPane W={W} H={H} big={big} url={items[i]?.url} image={images[i]} natural={natural[i]}
       onNatural={(wh) => setNatural((m) => (m[i] && m[i][0] === wh[0] && m[i][1] === wh[1] ? m : { ...m, [i]: wh }))}
       trace={pb?.trace[i] ?? 0} reads={pb?.readsShown[i] ?? 0} readBase={readBase[i] ?? 0} totalReads={totalReads}
-      read={read} readerName={read?.tool ?? 'the reader'} t={t} rm={rm} {...tagFor(i)} {...extra} />
+      read={read} readerName={read?.tool ?? 'the reader'} t={t} rm={rm} {...tagFor(i)} {...extra} /></Fit>
   );
 
   // The thumbnail follows whichever later image is being traced or read.
@@ -546,7 +571,8 @@ export function Analyzing() {
 
   return wrap(
     <>
-      <header style={{ height: 64, flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 20 }}>
+      <style>{CSS}</style>
+      <header className="s2c-analyzing-header" style={{ height: 64, flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: '0.08em', color: 'var(--muted)' }}>[1/3] CAPTURE</span>
           <h1 style={{ margin: 0, fontFamily: "'Silkscreen', monospace", fontWeight: 400, fontSize: 40, lineHeight: 1, letterSpacing: '0.01em' }}>Analyzing</h1>
@@ -562,11 +588,11 @@ export function Analyzing() {
 
       {netErr && <div role="status" style={{ fontSize: 13, color: 'var(--stop)', marginTop: -8 }}>{netErr} Retrying…</div>}
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '740px minmax(340px,1fr)', gap: 24 }}>
+      <div className="s2c-analyzing-grid" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: '740px minmax(340px,1fr)', gap: 24 }}>
         <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
           {pane(0, 740, 529, true, { note: { o: noteO, text: 'No coin or card chosen — sizes will come from your writing' } })}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '252px 280px 176px', gap: 16, height: 190 }}>
+          <div className="s2c-analyzing-row" style={{ display: 'grid', gridTemplateColumns: '252px 280px 176px', gap: 16, height: 190 }}>
             {n > 1
               ? pane(thumb, 252, 190, false, { corner: n > 2 ? `${thumb + 1}/${n}` : undefined })
               : <div style={{ width: 252, height: 190, borderRadius: 12, background: 'var(--inset)', display: 'grid', placeItems: 'center', fontSize: 13, color: 'var(--muted)' }}>One view sent</div>}
@@ -636,7 +662,7 @@ export function Analyzing() {
               <span style={{ fontSize: 15, fontWeight: 600 }}>Coverage</span>
               <span style={{ fontSize: 13, color: 'var(--muted)', whiteSpace: 'nowrap' }}><span style={{ fontFamily: MONO, fontSize: 14, color: 'var(--ink)' }}>{covered}</span> of 6 faces</span>
             </div>
-            <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
               <div style={{ position: 'relative', width: 216, height: 162, flex: 'none', perspective: 800 }}>
                 <div style={{ position: 'absolute', left: 54, top: 54, width: 54, height: 54, transformStyle: 'preserve-3d', transform: cube.root }}>
                   <CubeFace name="FRONT" f={faceStyle('front')} />

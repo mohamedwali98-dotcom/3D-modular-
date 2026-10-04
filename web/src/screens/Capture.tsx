@@ -193,7 +193,7 @@ export function Capture() {
 
   return (
     <section data-screen="Capture" style={{ padding: 28, display: 'flex', flexDirection: 'column', gap: 20, flex: 1, minHeight: 0, boxSizing: 'border-box' }}>
-      <header style={{ height: 64, flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 20 }}>
+      <header className="s2c-capture-header" style={{ height: 64, flex: 'none', display: 'flex', alignItems: 'flex-end', gap: 20 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <span style={{ fontFamily: MONO, fontSize: 13, letterSpacing: '0.08em', color: 'var(--muted)' }}>[1/3] CAPTURE</span>
           <h1 style={{ margin: 0, fontFamily: SILK, fontWeight: 400, fontSize: 40, lineHeight: 1, letterSpacing: '0.01em' }}>Capture</h1>
@@ -215,7 +215,8 @@ export function Capture() {
         <Segmented options={MODES} labels={MODE_LABELS} value={state.mode} onChange={(mode) => dispatch({ type: 'SET_MODE', mode })} ariaLabel="Capture mode" />
       </div>
 
-      <div style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,3fr) minmax(0,2fr)', gap: 24 }}>
+      <style>{`@media (max-width:1023px){.s2c-capture-grid{grid-template-columns:minmax(0,1fr)!important}.s2c-capture-header{height:auto!important;flex-wrap:wrap}}`}</style>
+      <div className="s2c-capture-grid" style={{ flex: 1, minHeight: 0, display: 'grid', gridTemplateColumns: 'minmax(0,3fr) minmax(0,2fr)', gap: 24 }}>
         <section style={{ display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
           <div
             onDragOver={(e) => { e.preventDefault(); if (!locked) setDragOver(true); }}
