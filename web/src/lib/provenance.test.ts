@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import fixture from './__fixtures__/analyze-success.json';
 import type { Spec } from '../api/types';
-import { BADGE, CHECK, countChecks, envelopeRows, featureRows } from './provenance';
+import { BADGE, CHECK, countChecks, envelopeRows, featureRows, groupBadge } from './provenance';
 
 const spec = fixture.spec as unknown as Spec;
 
@@ -70,5 +70,17 @@ describe('provenance helpers', () => {
   it('says a scaled value comes from the sizes you typed, not a reference object', () => {
     // fuse.py marks a value 'measured' when a coin or card set the scale, 'scaled' when your overall size did.
     expect(BADGE.scaled.label).toBe('Scaled from your sizes');
+  });
+});
+
+describe('groupBadge', () => {
+  it('shows the value still to check when only part of a group was typed', () => {
+    const rows = [{ path: 'features[0].a_mm', prov: 'measured' as const }, { path: 'features[0].b_mm', prov: 'default' as const }];
+    expect(groupBadge(rows, { 'features[0].a_mm': 3 })).toBe('default');
+  });
+  it('says edited once every value of the group was typed or is trusted', () => {
+    const rows = [{ path: 'features[0].a_mm', prov: 'default' as const }, { path: 'features[0].b_mm', prov: 'measured' as const }];
+    expect(groupBadge(rows, { 'features[0].a_mm': 3 })).toBe('user_edited');
+    expect(groupBadge(rows, {})).toBe('default');
   });
 });

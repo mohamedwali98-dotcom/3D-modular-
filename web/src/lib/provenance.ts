@@ -139,3 +139,11 @@ export function countChecks(spec: Spec, confirmed?: Record<string, number>): num
   for (const r of featureRows(spec, confirmed)) if (isCheck(r.prov) && !(confirmed && r.path in confirmed)) groups.add(r.group);
   return groups.size;
 }
+
+/** A feature group's badge: a value still to check wins (typing one field of a position never hides the other),
+ * then "edited by you" when the user typed any of it, else the group's own provenance. */
+export function groupBadge(rows: { path: string; prov: BadgeKey }[], typed: Record<string, number>): BadgeKey {
+  const unchecked = rows.find((r) => !(r.path in typed) && isCheck(r.prov));
+  if (unchecked) return unchecked.prov;
+  return rows.some((r) => r.path in typed) ? 'user_edited' : rows[0].prov;
+}

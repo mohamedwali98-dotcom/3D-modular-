@@ -8,7 +8,7 @@ import { snappedLabel } from '../lib/snap';
 import { listPhrase } from '../lib/words';
 import { dropFeatureDrafts, fieldProblem, parseMm } from '../lib/number';
 import { reviewGate } from '../lib/gate';
-import { BADGE, countChecks, featureRows, isCheck, provOf, type BadgeKey } from '../lib/provenance';
+import { BADGE, countChecks, featureRows, groupBadge, isCheck, provOf, type BadgeKey } from '../lib/provenance';
 import { useStore } from '../state/store';
 
 const MONO = "'Geist Mono', monospace";
@@ -66,8 +66,7 @@ function groupFeatures(spec: Spec, typed: Record<string, number>): LedgerGroup[]
   }
   return order.map((group) => {
     const rs = byGroup.get(group)!;
-    const anyTyped = rs.some((r) => r.path in typed);
-    const prov: BadgeKey = anyTyped ? 'user_edited' : rs[0].prov;
+    const prov: BadgeKey = groupBadge(rs, typed);
     const snappedRow = rs.find((r) => r.snapped);
     const snapped = !!snappedRow && rs[0].prov === 'default';
     return {
