@@ -169,7 +169,12 @@ def test_swept_folder_rebuilds(tmp_path, monkeypatch):
     real = artifacts.build
     monkeypatch.setattr(artifacts, "build", lambda spec: calls.append(1) or real(spec))
     first = build_part(SPEC, root=tmp_path)
-    shutil.rmtree(first.folder)
+    for _ in range(20):  # Windows (indexer, antivirus) can hold a file just written for a moment
+        try:
+            shutil.rmtree(first.folder)
+            break
+        except OSError:
+            time.sleep(0.1)
     second = build_part(SPEC, root=tmp_path)
     assert second.preview.exists() and len(calls) == 2
 
