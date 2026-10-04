@@ -353,6 +353,9 @@ class Studio:
                                      None if item.kind == "auto" else item.kind, mm_per_px=item.mm_per_px,
                                      numbers=item.numbers, line_art=item.line_art))
         pipe = self.pipe.configured(ai)
+        # a new analysis replaces the last one even when it stops: Build, Redraw and Export never act on old images
+        session.observed, session.spec, session.part, session.exported = None, None, None, None
+        session.edits, session.rejected = {}, ()
         observed = pipe.observe(images, None if reference in (None, "", "none") else reference)
         if isinstance(observed, S.MvAbstain):
             return Review(False, "capture", _abstain_card(observed), seed=ai.seed)
@@ -487,10 +490,21 @@ class Studio:
             msg = card("Please fix these values", " · ".join(errors), "stop")
             review = self._review(session, self._fuse(session))
             review.ok, review.message_html = False, msg
+            for axis in AXES:  # what the user sent stays on screen, the typo included, for them to fix
+                if axis in sizes and axis in review.sizes:
+                    review.sizes[axis]["value"] = str(sizes[axis])
+            review.rows, review.rejected = list(rows or review.rows), list(rejected or [])
             return review, Model(False, msg)
+        cleared = tuple(rejected or ()) != session.rejected and any(k.startswith("features[") for k in edits)
+        if cleared:  # a reject change can renumber the pockets and pins: a value typed by index could land elsewhere
+            edits = {k: v for k, v in edits.items() if not k.startswith("features[")}
         session.edits, session.rejected, session.geometry = edits, tuple(rejected or ()), geometry
         review = self._review(session, self._fuse(session))
+        if cleared:
+            note = "The feature values you typed were cleared because the rejected faces changed. Check them again."
+            review.warnings_html = bullet_html("Check", [note], "check") + review.warnings_html
         if not review.ok:
+            session.part = session.exported = None  # the part on screen no longer matches the review
             return review, Model(False, review.message_html)
         return review, self._model(session)
 
@@ -504,6 +518,7 @@ class Studio:
         session.geometry = geometry
         review = self._review(session, self._fuse(session))
         if not review.ok:
+            session.part = session.exported = None
             return review, Model(False, review.message_html)
         return review, self._model(session)
 

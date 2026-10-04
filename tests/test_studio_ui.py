@@ -478,3 +478,33 @@ def test_a_dropped_sheet_is_read_with_the_reader_switch_as_it_is(tmp_path, monke
     path.write_bytes(sketch(600, 400))
     studio.add_images(sid, [str(path)], use_reader=False)
     assert seen and "qwen" not in seen[0]
+
+
+def test_a_typo_keeps_the_other_typed_values(studio, tmp_path):
+    sid = with_images(studio, tmp_path)
+    review = studio.analyze(sid, "none", AiSettings())
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    review, _ = studio.build(sid, {"x": "70", "y": "4o", "z": "12"}, review.rows, [], GeometrySettings())
+    assert not review.ok and "4o" in review.message_html
+    assert review.sizes["x"]["value"] == "70" and review.sizes["y"]["value"] == "4o" and review.sizes["z"]["value"] == "12"
+
+
+def test_a_failed_refuse_or_analysis_drops_the_part_it_no_longer_matches(studio, tmp_path):
+    sid = with_images(studio, tmp_path)
+    review = studio.analyze(sid, "none", AiSettings())
+    _, model = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    assert model.ok and studio.store.get(sid).part is not None
+    review, model = studio.build(sid, {"x": "60", "y": "40", "z": "20000"}, review.rows, [], GeometrySettings())
+    assert not model.ok and studio.store.get(sid).part is None
+    assert "Nothing to export" in studio.export(sid, ExportSettings(formats=["stl"]), MeshSettings(), PrintSettings()).message_html
+
+
+def test_rejecting_a_face_clears_the_feature_values_typed(studio, tmp_path):
+    sid = with_images(studio, tmp_path)
+    session = studio.store.get(sid)
+    review = studio.analyze(sid, "none", AiSettings())
+    studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, [], GeometrySettings())
+    session.edits["features[0].diameter_mm"] = 5.0  # a value typed for a feature, then a face rejected
+    review, _ = studio.build(sid, {"x": "60", "y": "40", "z": "10"}, review.rows, ["right"], GeometrySettings())
+    assert not any(k.startswith("features[") for k in session.edits)
+    assert "cleared" in review.warnings_html
