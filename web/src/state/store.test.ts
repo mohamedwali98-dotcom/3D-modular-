@@ -42,6 +42,19 @@ describe('store', () => {
     expect(now.model?.key).toBe('new');
   });
 
+  it('remembers which typed values the analysis on screen already holds, across visits to Review', () => {
+    let s: State = reducer({ ...initialState, items: [item('a')] }, { type: 'START_JOB', jobId: 'j1' });
+    expect(s.applied.typed).toBe(s.typed);
+    s = reducer(s, { type: 'ANALYSIS', analysis: analysis('j1') });
+    expect(s.applied.typed).toBe(s.typed);
+    s = reducer(s, { type: 'TYPE_VALUE', path: 'envelope.x_mm', value: 50 });
+    expect(s.applied.typed).not.toBe(s.typed);  // a merge is due, even if Review was left before it answered
+    const sent = { typed: s.typed, rejected: s.rejected };
+    s = reducer(s, { type: 'ANALYSIS', analysis: analysis('j1'), applied: sent });
+    expect(s.applied).toEqual(sent);
+    expect(s.applied.typed).toBe(s.typed);
+  });
+
   it('remembers the spec a model was built from', () => {
     const spec = { version: 'mv1' } as Spec;
     const model = { key: 'k' } as ModelResult;

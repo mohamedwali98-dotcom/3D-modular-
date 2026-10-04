@@ -27,6 +27,9 @@ export interface State {
   analysis: Analysis | null;
   typed: Record<string, number>;
   rejected: Face[];
+  /** The typed values and rejects the analysis on screen already reflects (the same objects): anything newer means
+   * a merge is due, even after Review was left before its last merge answered. */
+  applied: { typed: Record<string, number>; rejected: Face[] };
   geometry: GeometrySettings;
   model: ModelResult | null;
   /** The spec `model` was built from, so the Model screen can rebuild when the analysis changes. */
@@ -46,7 +49,7 @@ export type Action =
   | { type: 'START_JOB'; jobId: string }
   | { type: 'JOB_UPDATE'; job: Job }
   | { type: 'JOB_LOST'; error: string }
-  | { type: 'ANALYSIS'; analysis: Analysis }
+  | { type: 'ANALYSIS'; analysis: Analysis; applied?: { typed: Record<string, number>; rejected: Face[] } }
   | { type: 'TYPE_VALUE'; path: string; value: number }
   | { type: 'TOGGLE_REJECT'; face: Face }
   | { type: 'SET_GEOMETRY'; patch: Partial<GeometrySettings> }
@@ -67,9 +70,15 @@ export const initialGeometry: GeometrySettings = {
   snap: true, clearance: 'medium', finish: 'none', finish_mm: 1.0, finish_edges: 'all_vertical',
 };
 
+/** No typed value and no reject, already reflected by the (new) analysis. */
+function fresh(): Pick<State, 'typed' | 'rejected' | 'applied'> {
+  const typed = {}, rejected: Face[] = [];
+  return { typed, rejected, applied: { typed, rejected } };
+}
+
 export const initialState: State = {
   screen: 'capture', mode: 'photos', projection: 'auto', items: [], reference: '', ai: initialAi, jobId: null, jobItems: [], jobError: null,
-  job: null, analysis: null, typed: {}, rejected: [], geometry: initialGeometry, model: null, modelSpec: null,
+  job: null, analysis: null, ...fresh(), geometry: initialGeometry, model: null, modelSpec: null,
   chat: { messages: [], last: null },
 };
 
@@ -100,7 +109,7 @@ export function reducer(state: State, action: Action): State {
     case 'START_JOB':
       return {
         ...state, screen: 'analyzing', jobId: action.jobId, jobItems: state.items.map(({ url, face, kind }) => ({ url, face, kind })),
-        jobError: null, job: null, analysis: null, typed: {}, rejected: [], model: null, modelSpec: null,
+        jobError: null, job: null, analysis: null, ...fresh(), model: null, modelSpec: null,
       };
     case 'JOB_UPDATE':
       return action.job.job_id === state.jobId ? { ...state, job: action.job } : state;
@@ -109,10 +118,11 @@ export function reducer(state: State, action: Action): State {
     case 'ANALYSIS':
       // A part described in the chat has no job: it replaces whatever the photos produced.
       if (action.analysis.request_id === '') {
-        return { ...state, analysis: action.analysis, jobId: null, job: null, jobItems: [], jobError: null, typed: {}, rejected: [] };
+        return { ...state, analysis: action.analysis, jobId: null, job: null, jobItems: [], jobError: null, ...fresh() };
       }
       // A late response for an older job (or a merge that outlived its job) must not replace the current one.
-      return action.analysis.request_id === state.jobId ? { ...state, analysis: action.analysis } : state;
+      return action.analysis.request_id === state.jobId
+        ? { ...state, analysis: action.analysis, applied: action.applied ?? state.applied } : state;
     case 'TYPE_VALUE':
       return { ...state, typed: { ...state.typed, [action.path]: action.value } };
     case 'TOGGLE_REJECT':

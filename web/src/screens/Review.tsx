@@ -146,7 +146,7 @@ export function Review() {
   const [mergeErr, setMergeErr] = useState<string | null>(null);
   const [expired, setExpired] = useState(false);
   // The typed values and rejects the current analysis already reflects. Anything newer means a merge is due.
-  const [applied, setApplied] = useState<Sent>({ typed, rejected });
+  const applied: Sent = state.applied;
   const [building, setBuilding] = useState(false);
   const [buildErr, setBuildErr] = useState<string | null>(null);
   const [buildAbstain, setBuildAbstain] = useState<Abstain | null>(null);
@@ -172,8 +172,7 @@ export function Review() {
     merge({ request_id: id, user_values: sent.typed, accepted: [], rejected: sent.rejected })
       .then((a) => {
         if (my !== mergeSeq.current) return;
-        dispatch({ type: 'ANALYSIS', analysis: a });
-        if (alive.current) setApplied(sent);
+        dispatch({ type: 'ANALYSIS', analysis: a, applied: sent });
       })
       .catch((e: unknown) => {
         if (my !== mergeSeq.current || !alive.current) return;
